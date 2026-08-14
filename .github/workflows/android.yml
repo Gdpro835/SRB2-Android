@@ -5,6 +5,7 @@ on:
     branches: [ android-port ]
   pull_request:
     branches: [ android-port ]
+  workflow_dispatch:
 
 jobs:
   build:
