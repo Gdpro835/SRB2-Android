@@ -1287,7 +1287,7 @@ static void IdentifyVersion(void)
 	D_AddFile(&startupwadfiles, FILEPATH("zones.pk3"), ASSET_HASH_ZONES_PK3);
 
 	// Add the players
-	D_AddFile(&startupwadfiles, FILEPATH("player.dta"), ASSET_HASH_PLAYER_DTA);
+	D_AddFile(&startupwadfiles, FILEPATH("characters.pk3"), ASSET_HASH_PLAYER_DTA);
 
 #ifdef USE_PATCH_DTA
 	// Add our crappy patches to fix our bugs
@@ -1311,7 +1311,7 @@ static void IdentifyVersion(void)
 				I_Error("File "str" has been modified with non-music/sound lumps"); \
 		}
 
-		MUSICTEST("music.dta")
+		MUSICTEST("music.pk3")
 		//MUSICTEST("patch_music.pk3")
 	}
 #endif
@@ -1510,7 +1510,7 @@ void D_SRB2Main(void)
 	I_ShowSplashScreen();
 #endif
 
-	mainwads = 3; // doesn't include music.dta
+	mainwads = 3; // doesn't include music.pk3
 #ifdef USE_PATCH_DTA
 	mainwads++;
 #endif
