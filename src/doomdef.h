@@ -178,7 +178,11 @@ extern char logfilename[1024];
 
 // Does this version require an added patch file?
 // Comment or uncomment this as necessary.
-#define USE_PATCH_DTA
+// Disabled: SRB2 2.2.14+/2.2.15 assets no longer ship patch.pk3,
+// and patch.pk3 is not needed for normal gameplay (it only adds the
+// optional vanilla 1.09.4 content). Loading it caused a fatal MD5
+// mismatch error when an old/mismatched patch.pk3 was present.
+//#define USE_PATCH_DTA
 
 // Load Android assets
 #if defined(__ANDROID__)
