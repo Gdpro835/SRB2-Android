@@ -41,7 +41,7 @@
  * Last updated 2023 / 09 / 06 - v2.2.12 - patch.pk3
  * Last updated 2023 / 09 / 09 - v2.2.13 - none
  */
-#define ASSET_HASH_SRB2_PK3   "3182ce524acc2072ddaa81acf4b6a9aa"
+#define ASSET_HASH_SRB2_PK3   "0b3206bc25a94117fbd8118df6f47712"
 #define ASSET_HASH_ZONES_PK3  "88ff4c300851ccdb0406698eadd89907"
 #define ASSET_HASH_PLAYER_DTA "5c5936b8a690e007c0939bd0785a41fb"
 #ifdef USE_PATCH_DTA
