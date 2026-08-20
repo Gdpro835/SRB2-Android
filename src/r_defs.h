@@ -926,6 +926,8 @@ typedef struct
 #endif
 } spriteframe_t;
 
+#define MAXFRAMENUM 256
+
 //
 // A sprite definition:  a number of animation frames.
 //

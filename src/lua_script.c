@@ -611,8 +611,6 @@ static inline void LUA_LoadFile(MYFILE *f, char *name, boolean noresults)
 	CONS_Printf("Loading Lua script from %s\n", name);
 	if (!gL) // Lua needs to be initialized
 		LUA_ClearState();
-	lua_pushinteger(gL, f->wad);
-	lua_setfield(gL, LUA_REGISTRYINDEX, "WAD");
 
 	lua_lumploading++; // turn on loading flag
 
