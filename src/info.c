@@ -28,7 +28,7 @@
 
 // Hey, moron! If you change this table, don't forget about the sprite enum in info.h and the sprite lights in hw_light.c!
 // For the sake of constant merge conflicts, let's spread this out
-char sprnames[NUMSPRITES + 1][5] =
+char sprnames[NUMSPRITES + 1][MAXSPRITENAME + 1] =
 {
 	"NULL", // invisible object
 	"UNKN",
@@ -524,7 +524,7 @@ char sprnames[NUMSPRITES + 1][5] =
 	"GWLR",
 };
 
-char spr2names[NUMPLAYERSPRITES][5] =
+char spr2names[NUMPLAYERSPRITES][MAXSPRITENAME + 1] =
 {
 	"STND",
 	"WAIT",
