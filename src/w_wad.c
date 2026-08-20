@@ -2814,6 +2814,61 @@ void *W_CachePatchNum(lumpnum_t lumpnum, INT32 tag)
 	return W_CachePatchNumPwad(WADFILENUM(lumpnum),LUMPNUM(lumpnum),tag);
 }
 
+// Reads a patch header from a lump in a specific file.
+// Returns true and fills the out parameters on success, false otherwise.
+// This reads the header only, so the patch isn't fully cached.
+// Handles PNG lumps, too.
+boolean W_ReadPatchHeaderPwad(UINT16 wadnum, UINT16 lumpnum, INT16 *width, INT16 *height, INT16 *topoffset, INT16 *leftoffset)
+{
+	UINT8 header[PNG_HEADER_SIZE];
+	size_t len;
+	softwarepatch_t patch;
+
+	if (!TestValidLump(wadnum, lumpnum))
+		return false;
+
+	W_ReadLumpHeaderPwad(wadnum, lumpnum, header, sizeof header, 0);
+
+	len = W_LumpLengthPwad(wadnum, lumpnum);
+
+	if (Picture_IsLumpPNG(header, len))
+	{
+#ifndef NO_PNG_LUMPS
+		UINT8 *png = W_CacheLumpNumPwad(wadnum, lumpnum, PU_CACHE);
+		INT32 pwidth = 0, pheight = 0;
+
+		if (!Picture_PNGDimensions(png, &pwidth, &pheight, topoffset, leftoffset, len))
+		{
+			Z_Free(png);
+			return false;
+		}
+
+		*width = (INT16)pwidth;
+		*height = (INT16)pheight;
+
+		Z_Free(png);
+
+		return true;
+#else
+		Picture_ThrowPNGError(W_CheckNameForNumPwad(wadnum, lumpnum), wadfiles[wadnum]->filename);
+
+		return false;
+#endif
+	}
+
+	if (!W_ReadLumpHeaderPwad(wadnum, lumpnum, &patch, sizeof (INT16) * 4, 0))
+		return false;
+
+	*width = SHORT(patch.width);
+	*height = SHORT(patch.height);
+	if (topoffset)
+		*topoffset = SHORT(patch.topoffset);
+	if (leftoffset)
+		*leftoffset = SHORT(patch.leftoffset);
+
+	return true;
+}
+
 void W_UnlockCachedPatch(void *patch)
 {
 	if (!patch)

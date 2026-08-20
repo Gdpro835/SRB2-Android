@@ -279,6 +279,10 @@ void *W_CachePatchLongName(const char *name, INT32 tag);
 void *W_CachePatchNumPwad(UINT16 wad, UINT16 lump, INT32 tag);
 void *W_CachePatchNum(lumpnum_t lumpnum, INT32 tag);
 
+// Reads a patch header from a lump, without caching the whole patch.
+// Returns true and fills the out parameters on success, false otherwise.
+boolean W_ReadPatchHeaderPwad(UINT16 wad, UINT16 lump, INT16 *width, INT16 *height, INT16 *topoffset, INT16 *leftoffset);
+
 // Returns a Software patch.
 // Performs any necessary conversions from PNG images.
 void *W_CacheSoftwarePatchNumPwad(UINT16 wad, UINT16 lump, INT32 tag);
