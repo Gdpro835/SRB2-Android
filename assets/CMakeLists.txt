@@ -27,7 +27,7 @@ list(TRANSFORM SRB2_ASSETS_DOCS PREPEND "${SRB2_ASSET_DIRECTORY_ABSOLUTE}")
 
 set(SRB2_ASSETS_GAME
 	"srb2.pk3"
-	"player.dta"
+	"characters.pk3"
 	"zones.pk3"
 	"patch.pk3"
 	"music.dta"

@@ -1287,7 +1287,7 @@ static void IdentifyVersion(void)
 	D_AddFile(&startupwadfiles, FILEPATH("zones.pk3"), ASSET_HASH_ZONES_PK3);
 
 	// Add the players
-	D_AddFile(&startupwadfiles, FILEPATH("characters.pk3"), ASSET_HASH_PLAYER_DTA);
+	D_AddFile(&startupwadfiles, FILEPATH("characters.pk3"), ASSET_HASH_CHARACTERS_PK3);
 
 #ifdef USE_PATCH_DTA
 	// Add our crappy patches to fix our bugs
