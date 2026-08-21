@@ -45,7 +45,9 @@ android {
                             'characters.pk3',
                             'patch.pk3', 'patch_music.pk3',
                             'music.pk3',
-                            'modelpacks/default.zip']
+                            'modelpacks/default.zip',
+                            'models.dat',
+                            'models/**']
                     ))
                 }
             }

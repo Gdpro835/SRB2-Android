@@ -6744,6 +6744,11 @@ void HWR_AddCommands(void)
 
 	CV_RegisterVar(&cv_glmodellighting);
 	CV_RegisterVar(&cv_glmodelinterpolation);
+
+#ifdef MOBILE_PLATFORM
+	// Models are bundled with the Android build, so turn them on by default
+	cv_glmodels.defaultvalue = "On";
+#endif
 	CV_RegisterVar(&cv_glmodels);
 
 	CV_RegisterVar(&cv_glskydome);
