@@ -1267,8 +1267,18 @@ static texpatch_t *R_ParsePatch(boolean actuallyLoadPatch)
 
 	if (actuallyLoadPatch == true)
 	{
-		// Check lump exists
-		patchLumpNum = W_GetNumForName(patchName);
+		// A TEXTURES definition can refer to a patch which is no longer
+		// present in the loaded resources.  This happens in the 2.2.15
+		// assets, so do not turn a bad, unused texture into a fatal error.
+		patchLumpNum = W_CheckNumForName(patchName);
+		if (patchLumpNum == LUMPERROR)
+		{
+			CONS_Alert(CONS_ERROR,
+				"Error parsing TEXTURES lump: Patch \"%s\" cannot be found\n",
+				patchName);
+			Z_Free(patchName);
+			return NULL;
+		}
 		// If so, allocate memory for texpatch_t and fill 'er up
 		resultPatch = (texpatch_t *)Z_Malloc(sizeof(texpatch_t),PU_STATIC,NULL);
 		resultPatch->originx = patchXPos;
@@ -1420,16 +1430,20 @@ static texture_t *R_ParseTexture(boolean actuallyLoadTexture)
 				Z_Free(texturesToken);
 				if (resultTexture)
 				{
-					// Get that new patch
+					// Get that new patch. Bad TEXTURES entries are skipped by
+					// R_ParsePatch instead of aborting resource loading.
 					newPatch = R_ParsePatch(true);
-					// Make room for the new patch
-					resultTexture = Z_Realloc(resultTexture, sizeof(texture_t) + (resultTexture->patchcount+1)*sizeof(texpatch_t), PU_STATIC, NULL);
-					// Populate the uninitialized values in the new patch entry of our array
-					M_Memcpy(&resultTexture->patches[resultTexture->patchcount], newPatch, sizeof(texpatch_t));
-					// Account for the new number of patches in the texture
-					resultTexture->patchcount++;
-					// Then free up the memory assigned to R_ParsePatch, as it's unneeded now
-					Z_Free(newPatch);
+					if (newPatch != NULL)
+					{
+						// Make room for the new patch
+						resultTexture = Z_Realloc(resultTexture, sizeof(texture_t) + (resultTexture->patchcount+1)*sizeof(texpatch_t), PU_STATIC, NULL);
+						// Populate the uninitialized values in the new patch entry of our array
+						M_Memcpy(&resultTexture->patches[resultTexture->patchcount], newPatch, sizeof(texpatch_t));
+						// Account for the new number of patches in the texture
+						resultTexture->patchcount++;
+						// Then free up the memory assigned to R_ParsePatch, as it's unneeded now
+						Z_Free(newPatch);
+					}
 				}
 				else
 				{
@@ -1449,7 +1463,11 @@ static texture_t *R_ParseTexture(boolean actuallyLoadTexture)
 		}
 		if (resultTexture && resultTexture->patchcount == 0)
 		{
-			I_Error("Error parsing TEXTURES lump: Texture \"%s\" must have at least one patch",newTextureName);
+			CONS_Alert(CONS_ERROR,
+				"Error parsing TEXTURES lump: Texture \"%s\" must have at least one patch\n",
+				newTextureName);
+			Z_Free(resultTexture);
+			resultTexture = NULL;
 		}
 	}
 	else
@@ -1545,12 +1563,21 @@ void R_ParseTEXTURESLump(UINT16 wadNum, UINT16 lumpNum, INT32 *texindex)
 			Z_Free(texturesToken);
 			// Get the new texture
 			newTexture = R_ParseTexture(true);
-			// Store the new texture
-			textures[*texindex] = newTexture;
-			texturewidth[*texindex] = newTexture->width;
-			textureheight[*texindex] = newTexture->height << FRACBITS;
-			// Increment i back in R_LoadTextures()
-			(*texindex)++;
+			if (newTexture != NULL)
+			{
+				// Store the new texture
+				textures[*texindex] = newTexture;
+				texturewidth[*texindex] = newTexture->width;
+				textureheight[*texindex] = newTexture->height << FRACBITS;
+				// Increment i back in R_LoadTextures()
+				(*texindex)++;
+			}
+			else
+			{
+				// R_AllocateTextures counted this entry before parsing it.
+				// Keep the final texture count in sync with the valid entries.
+				numtextures--;
+			}
 		}
 		else
 		{
