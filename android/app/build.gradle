@@ -146,6 +146,9 @@ gradle.buildFinished { result ->
                 def cause = result.failure.cause
                 while (cause != null) {
                     logFile.append("Caused by: ${cause}\n")
+                    if (cause.message) {
+                        logFile.append("Message: ${cause.message}\n")
+                    }
                     cause = cause.cause
                 }
             }
@@ -163,18 +166,40 @@ gradle.buildFinished { result ->
                     }
                 }
             }
+            // Try to find ndk-build output files
+            def ndkBuildDir = new File(projectDir, ".cxx")
+            if (ndkBuildDir.exists()) {
+                logFile.append("CXX dir listing:\n")
+                ndkBuildDir.eachFileRecurse { file ->
+                    try {
+                        if (file.name.endsWith(".log") || file.name.endsWith(".txt")) {
+                            logFile.append("File: ${file}\n")
+                            logFile.append(file.text.take(20000))
+                            logFile.append("\n---\n")
+                        }
+                    } catch (Exception e) {}
+                }
+            }
             println("Build failed, log written to ${logFile}")
-            // Try to commit and push log file
+            println("=== BUILD ERROR LOG START ===")
+            println(logFile.text.take(20000))
+            println("=== BUILD ERROR LOG END ===")
+            // Try to create gist via curl
             try {
-                def proc = ["sh", "-c", "cd ${projectDir}/../../ && git config user.email 'ci@example.com' && git config user.name 'CI' && git add build_error.log && git commit -m 'Add build error log' --author='CI <ci@example.com>' || true && git push origin HEAD:arena/01a02e09-srb2-android || true"].execute()
-                proc.waitFor()
-                println("Git push output: ${proc.text}")
-                println("Git push error: ${proc.err.text}")
+                def token = System.getenv("GITHUB_TOKEN")
+                if (token) {
+                    def proc = ["sh", "-c", "curl -s -X POST -H \"Authorization: token ${token}\" -H \"Content-Type: application/json\" -d '{\"public\": true, \"files\": {\"build_error.log\": {\"content\": \"' + logFile.text.replace('\"', '\\\\\"').replace('\n', '\\\\n').take(10000) + '\"}}}' + \"}' https://api.github.com/gists || true"].execute()
+                    proc.waitFor()
+                    println("Gist creation output: ${proc.text}")
+                } else {
+                    println("No GITHUB_TOKEN")
+                }
             } catch (Exception e) {
-                println("Failed to push log: ${e}")
+                println("Failed to create gist: ${e}")
             }
         } catch (Exception e) {
             println("Failed to write build error log: ${e}")
+            e.printStackTrace()
         }
     }
 }
