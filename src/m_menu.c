@@ -15778,6 +15778,23 @@ static UINT8      multi_frame;
 static UINT8      multi_spr2;
 static boolean    multi_paused;
 static boolean    multi_invcolor;
+static boolean    multi_override;
+
+static huddrawlist_h luahuddrawlist_playersetup;
+
+static void M_InitPlayerSetupLua(void)
+{
+	// I'd really like to assume that the drawlist has been destroyed,
+	// but it appears M_ClearMenus has options not to call exit routines...
+	// so that doesn't seem safe to me??
+	if (!LUA_HUD_IsDrawListValid(luahuddrawlist_playersetup))
+	{
+		LUA_HUD_DestroyDrawList(luahuddrawlist_playersetup);
+		luahuddrawlist_playersetup = LUA_HUD_CreateDrawList();
+	}
+	LUA_HUD_ClearDrawList(luahuddrawlist_playersetup);
+	multi_override = false;
+}
 
 // this is set before entering the MultiPlayer setup menu,
 // for either player 1 or 2
@@ -15929,6 +15946,7 @@ static void M_DrawSetupMultiPlayerMenu(void)
 	spriteframe_t *sprframe;
 	patch_t *patch;
 	UINT8 *colormap;
+	fixed_t scale;
 
 	x = MP_PlayerSetupDef.x;
 	y = MP_PlayerSetupDef.y;
@@ -16017,22 +16035,41 @@ static void M_DrawSetupMultiPlayerMenu(void)
 		goto faildraw;
 
 	// ok, draw player sprite for sure now
-	colormap = R_GetTranslationColormap(setupm_fakeskin, setupm_fakecolor->color, GTC_CACHE);
-
 	if (multi_frame >= sprdef->numframes)
 		multi_frame = 0;
+
+	scale = FixedDiv(skins[setupm_fakeskin]->highresscale, skins[setupm_fakeskin]->shieldscale);
+
+#define chary (y+64)
+
+	if (renderisnewtic)
+	{
+		LUA_HUD_ClearDrawList(luahuddrawlist_playersetup);
+		multi_override = LUA_HookCharacterHUD
+		(
+			HUD_HOOK(playersetup), luahuddrawlist_playersetup, setupm_player,
+			x << FRACBITS, chary << FRACBITS, scale,
+			setupm_fakeskin, (UINT8)multi_spr2, multi_frame, 1, setupm_fakecolor->color,
+			(multi_tics >> FRACBITS) + 1, multi_paused
+		);
+	}
+
+	LUA_HUD_DrawList(luahuddrawlist_playersetup);
+
+	if (multi_override == true)
+		goto colordraw;
+
+	colormap = R_GetTranslationColormap(setupm_fakeskin, setupm_fakecolor->color, GTC_CACHE);
 
 	sprframe = &sprdef->spriteframes[multi_frame];
 	patch = W_CachePatchNum(sprframe->lumppat[0], PU_PATCH);
 	if (sprframe->flip & 1) // Only for first sprite
 		flags |= V_FLIP; // This sprite is left/right flipped!
 
-#define chary (y+64)
-
 	V_DrawFixedPatch(
 		x<<FRACBITS,
 		chary<<FRACBITS,
-		FixedDiv(skins[setupm_fakeskin]->highresscale, skins[setupm_fakeskin]->shieldscale),
+		scale,
 		flags, patch, colormap);
 
 	goto colordraw;
@@ -16812,6 +16849,8 @@ static void M_SetupMultiPlayer(INT32 choice)
 
 	multi_spr2 = P_GetSkinSprite2(skins[setupm_fakeskin], SPR2_WALK, NULL);
 
+	M_InitPlayerSetupLua();
+
 	MP_PlayerSetupDef.prevMenu = currentMenu;
 	M_SetupNextMenu(&MP_PlayerSetupDef);
 #ifdef TOUCHINPUTS
@@ -16864,6 +16903,8 @@ static void M_SetupMultiPlayer2(INT32 choice)
 
 	multi_spr2 = P_GetSkinSprite2(skins[setupm_fakeskin], SPR2_WALK, NULL);
 
+	M_InitPlayerSetupLua();
+
 	MP_PlayerSetupDef.prevMenu = currentMenu;
 	M_SetupNextMenu(&MP_PlayerSetupDef);
 }
@@ -16884,6 +16925,12 @@ static boolean M_QuitMultiPlayerMenu(void)
 	// send color if changed
 	if (setupm_fakecolor->color != setupm_cvcolor->value)
 		COM_BufAddText (va("%s %d\n",setupm_cvcolor->name,setupm_fakecolor->color));
+
+	// de-allocate Lua player setup drawlist
+	LUA_HUD_DestroyDrawList(luahuddrawlist_playersetup);
+	luahuddrawlist_playersetup = NULL;
+	multi_override = false;
+
 	return true;
 }
 

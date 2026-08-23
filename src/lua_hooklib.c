@@ -667,6 +667,51 @@ void LUA_HookHUD(int hook_type, huddrawlist_h list)
 	}
 }
 
+int LUA_HookCharacterHUD
+(
+	int hook_type, huddrawlist_h list, player_t *player,
+	fixed_t x, fixed_t y, fixed_t scale,
+	INT32 skinIndex, UINT8 sprite2, UINT8 frame, UINT8 rotation, skincolornum_t color,
+	INT32 ticker, boolean mode
+){
+	const hook_t * map = &hudHookIds[hook_type];
+	Hook_State hook;
+
+	hook.status = false;
+
+	if (map->numHooks > 0)
+	{
+		start_hook_stack();
+		begin_hook_values(&hook);
+
+		LUA_SetHudHook(hook_type, list);
+
+		LUA_PushUserdata(gL, player, META_PLAYER);
+		lua_pushfixed(gL, x);
+		lua_pushfixed(gL, y);
+		lua_pushfixed(gL, scale);
+		lua_pushstring(gL, skins[skinIndex]->name);
+		lua_pushinteger(gL, sprite2);
+		lua_pushinteger(gL, frame);
+		lua_pushinteger(gL, rotation);
+		lua_pushinteger(gL, color);
+		lua_pushinteger(gL, ticker);
+		lua_pushboolean(gL, mode);
+
+		hud_running = true; // local hook
+		init_hook_call(&hook, 1, res_true);
+		call_mapped(&hook, map);
+		hud_running = false;
+
+		lua_pushnil(gL);
+		lua_setfield(gL, LUA_REGISTRYINDEX, "HUD_DRAW_LIST");
+
+		lua_settop(gL, 0);
+	}
+
+	return hook.status;
+}
+
 /* =========================================================================
                                SPECIALIZED HOOKS
    ========================================================================= */

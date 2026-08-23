@@ -48,6 +48,7 @@
 
 // SRB2Kart
 #include "r_fps.h" // R_GetFramerateCap
+#include "lua_hud.h" // LUA_HudEnabled
 
 // --------------------------------------------
 // assembly or c drawer routines for 8bpp/16bpp
@@ -748,7 +749,7 @@ void SCR_ClosedCaptions(void)
 		else if (splitscreen)
 			basey -= 8;
 		else if ((modeattacking == ATTACKING_NIGHTS)
-		|| (!(maptol & TOL_NIGHTS)
+		|| (!(maptol & TOL_NIGHTS) && LUA_HudEnabled(hud_powerups)
 		&& ((cv_powerupdisplay.value == 2) // "Always"
 		 || (cv_powerupdisplay.value == 1 && !camera.chase)))) // "First-person only"
 			basey -= 16;

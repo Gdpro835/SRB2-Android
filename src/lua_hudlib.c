@@ -41,11 +41,13 @@ static const char *const hud_disable_options[] = {
 	"stagetitle",
 	"textspectator",
 	"crosshair",
+	"powerups",
 
 	"score",
 	"time",
 	"rings",
 	"lives",
+	"input",
 
 	"weaponrings",
 	"powerstones",
