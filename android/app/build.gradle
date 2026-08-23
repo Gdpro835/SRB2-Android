@@ -113,6 +113,19 @@ android {
             task.doFirst {
                 println("Running ${task.name} with verbose")
             }
+            // Try to not fail the build so we can capture logs
+            //task.ignoreFailures = true
+        }
+    }
+
+    // Force artifact upload even on failure by creating a dummy APK with error log
+    gradle.taskGraph.afterTask { task, state ->
+        if (task.name.contains("externalNative") && state.failure) {
+            println("Task ${task.name} failed, but continuing to save logs")
+            def logDir = new File(projectDir, "build/outputs/apk/gameNoAssets")
+            logDir.mkdirs()
+            def logFile = new File(logDir, "ndk_build_failed.txt")
+            logFile.text = "NDK build failed: ${state.failure}\n"
         }
     }
 
@@ -149,6 +162,8 @@ gradle.buildFinished { result ->
     if (result.failure) {
         try {
             def logFile = new File(projectDir, "../../build_error.log")
+            def logFile2 = new File(projectDir, "build/outputs/apk/gameNoAssets/build_error.log")
+            logFile2.parentFile.mkdirs()
             logFile.text = "Build failed: ${result.failure}\n"
             if (result.failure.cause) {
                 logFile.append("Cause: ${result.failure.cause}\n")
@@ -189,7 +204,8 @@ gradle.buildFinished { result ->
                     } catch (Exception e) {}
                 }
             }
-            println("Build failed, log written to ${logFile}")
+            logFile2.text = logFile.text
+            println("Build failed, log written to ${logFile} and ${logFile2}")
             println("=== BUILD ERROR LOG START ===")
             println(logFile.text.take(20000))
             println("=== BUILD ERROR LOG END ===")
