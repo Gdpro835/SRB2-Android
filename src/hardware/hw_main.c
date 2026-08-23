@@ -1221,7 +1221,7 @@ static void HWR_ProcessSeg(void) // Sort of like GLWall::Process in GZDoom
 			else
 				texturevpeg = gl_frontsector->floorheight - gl_backsector->floorheight;
 
-			texturevpeg += gl_sidedef->rowoffset + gl_sidedef->offsety_bot;
+			texturevpeg += gl_sidedef->rowoffset + gl_sidedef->offsety_bottom;
 
 			// This is so that it doesn't overflow and screw up the wall, it doesn't need to go higher than the texture's height anyway
 			texturevpeg %= textureheight[gl_bottomtexture];
@@ -1230,8 +1230,8 @@ static void HWR_ProcessSeg(void) // Sort of like GLWall::Process in GZDoom
 
 			wallVerts[3].t = wallVerts[2].t = texturevpeg * grTex->scaleY;
 			wallVerts[0].t = wallVerts[1].t = (texturevpeg + gl_backsector->floorheight - gl_frontsector->floorheight) * grTex->scaleY;
-			wallVerts[0].s = wallVerts[3].s = (cliplow + gl_sidedef->offsetx_bot) * grTex->scaleX;
-			wallVerts[2].s = wallVerts[1].s = (cliphigh + gl_sidedef->offsetx_bot) * grTex->scaleX;
+			wallVerts[0].s = wallVerts[3].s = (cliplow + gl_sidedef->offsetx_bottom) * grTex->scaleX;
+			wallVerts[2].s = wallVerts[1].s = (cliphigh + gl_sidedef->offsetx_bottom) * grTex->scaleX;
 
 			// Adjust t value for sloped walls
 			if (!(gl_linedef->flags & ML_SKEWTD))

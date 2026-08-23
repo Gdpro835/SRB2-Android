@@ -2016,7 +2016,7 @@ void R_StoreWallRange(INT32 start, INT32 stop)
 		}
 
 		rw_toptexturemid += sidedef->rowoffset + sidedef->offsety_top;
-		rw_bottomtexturemid += sidedef->rowoffset + sidedef->offsety_bot;
+		rw_bottomtexturemid += sidedef->rowoffset + sidedef->offsety_bottom;
 
 		R_AllocTextureColumnTables(rw_stopx - start);
 
@@ -2302,7 +2302,7 @@ void R_StoreWallRange(INT32 start, INT32 stop)
 		rw_offset += sidedef->textureoffset + curline->offset;
 		rw_offset_top = sidedef->offsetx_top;
 		rw_offset_mid = sidedef->offsetx_mid;
-		rw_offset_bot = sidedef->offsetx_bot;
+		rw_offset_bot = sidedef->offsetx_bottom;
 		rw_centerangle = ANGLE_90 + viewangle - rw_normalangle;
 
 		// calculate light table

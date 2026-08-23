@@ -35,10 +35,14 @@ enum sector_e {
 	sector_floorpic,
 	sector_floorxoffset,
 	sector_flooryoffset,
-	sector_floorangle,	
+	sector_floorxscale,
+	sector_flooryscale,
+	sector_floorangle,
 	sector_ceilingpic,
 	sector_ceilingxoffset,
 	sector_ceilingyoffset,
+	sector_ceilingxscale,
+	sector_ceilingyscale,
 	sector_ceilingangle,
 	sector_lightlevel,
 	sector_floorlightlevel,
@@ -74,11 +78,15 @@ static const char *const sector_opt[] = {
 	"floorpic",
 	"floorxoffset",
 	"flooryoffset",
+	"floorxscale",
+	"flooryscale",
 	"floorangle",
 	"ceilingpic",
 	"ceilingxoffset",
 	"ceilingyoffset",
-	"ceilingangle",	
+	"ceilingxscale",
+	"ceilingyscale",
+	"ceilingangle",
 	"lightlevel",
 	"floorlightlevel",
 	"floorlightabsolute",
@@ -188,8 +196,16 @@ enum side_e {
 	side_offsety_top,
 	side_offsetx_mid,
 	side_offsety_mid,
+	side_offsetx_bottom,
 	side_offsetx_bot,
+	side_offsety_bottom,
 	side_offsety_bot,
+	side_scalex_top,
+	side_scalex_mid,
+	side_scalex_bottom,
+	side_scaley_top,
+	side_scaley_mid,
+	side_scaley_bottom,
 	side_toptexture,
 	side_bottomtexture,
 	side_midtexture,
@@ -208,8 +224,16 @@ static const char *const side_opt[] = {
 	"offsety_top",
 	"offsetx_mid",
 	"offsety_mid",
+	"offsetx_bottom",
 	"offsetx_bot",
+	"offsety_bottom",
 	"offsety_bot",
+	"scalex_top",
+	"scalex_mid",
+	"scalex_bottom",
+	"scaley_top",
+	"scaley_mid",
+	"scaley_bottom",
 	"toptexture",
 	"bottomtexture",
 	"midtexture",
@@ -665,6 +689,12 @@ static int sector_get(lua_State *L)
 		lua_pushfixed(L, sector->flooryoffset);
 		return 1;
 	}
+	case sector_floorxscale:
+		lua_pushfixed(L, sector->floorxscale);
+		return 1;
+	case sector_flooryscale:
+		lua_pushfixed(L, sector->flooryscale);
+		return 1;
 	case sector_floorangle: 
 	{
 		lua_pushangle(L, sector->floorangle);
@@ -689,6 +719,12 @@ static int sector_get(lua_State *L)
 		lua_pushfixed(L, sector->ceilingyoffset);
 		return 1;
 	}
+	case sector_ceilingxscale:
+		lua_pushfixed(L, sector->ceilingxscale);
+		return 1;
+	case sector_ceilingyscale:
+		lua_pushfixed(L, sector->ceilingyscale);
+		return 1;
 	case sector_ceilingangle:
 	{
 		lua_pushangle(L, sector->ceilingangle);
@@ -845,6 +881,12 @@ static int sector_set(lua_State *L)
 	case sector_flooryoffset:
 		sector->flooryoffset = luaL_checkfixed(L, 3);
 		break;
+	case sector_floorxscale:
+		sector->floorxscale = luaL_checkfixed(L, 3);
+		break;
+	case sector_flooryscale:
+		sector->flooryscale = luaL_checkfixed(L, 3);
+		break;
 	case sector_floorangle:
 		sector->floorangle = luaL_checkangle(L, 3);
 		break;				
@@ -856,6 +898,12 @@ static int sector_set(lua_State *L)
 		break;
 	case sector_ceilingyoffset:
 		sector->ceilingyoffset = luaL_checkfixed(L, 3);
+		break;
+	case sector_ceilingxscale:
+		sector->ceilingxscale = luaL_checkfixed(L, 3);
+		break;
+	case sector_ceilingyscale:
+		sector->ceilingyscale = luaL_checkfixed(L, 3);
 		break;
 	case sector_ceilingangle:
 		sector->ceilingangle = luaL_checkangle(L, 3);
@@ -1219,11 +1267,31 @@ static int side_get(lua_State *L)
 	case side_offsety_mid:
 		lua_pushfixed(L, side->offsety_mid);
 		return 1;
+	case side_offsetx_bottom:
 	case side_offsetx_bot:
-		lua_pushfixed(L, side->offsetx_bot);
+		lua_pushfixed(L, side->offsetx_bottom);
 		return 1;
+	case side_offsety_bottom:
 	case side_offsety_bot:
-		lua_pushfixed(L, side->offsety_bot);
+		lua_pushfixed(L, side->offsety_bottom);
+		return 1;
+	case side_scalex_top:
+		lua_pushfixed(L, side->scalex_top);
+		return 1;
+	case side_scalex_mid:
+		lua_pushfixed(L, side->scalex_mid);
+		return 1;
+	case side_scalex_bottom:
+		lua_pushfixed(L, side->scalex_bottom);
+		return 1;
+	case side_scaley_top:
+		lua_pushfixed(L, side->scaley_top);
+		return 1;
+	case side_scaley_mid:
+		lua_pushfixed(L, side->scaley_mid);
+		return 1;
+	case side_scaley_bottom:
+		lua_pushfixed(L, side->scaley_bottom);
 		return 1;
 	case side_toptexture:
 		lua_pushinteger(L, side->toptexture);
@@ -1306,11 +1374,31 @@ static int side_set(lua_State *L)
 	case side_offsety_mid:
 		side->offsety_mid = luaL_checkfixed(L, 3);
 		break;
+	case side_offsetx_bottom:
 	case side_offsetx_bot:
-		side->offsetx_bot = luaL_checkfixed(L, 3);
+		side->offsetx_bottom = luaL_checkfixed(L, 3);
 		break;
+	case side_offsety_bottom:
 	case side_offsety_bot:
-		side->offsety_bot = luaL_checkfixed(L, 3);
+		side->offsety_bottom = luaL_checkfixed(L, 3);
+		break;
+	case side_scalex_top:
+		side->scalex_top = luaL_checkfixed(L, 3);
+		break;
+	case side_scalex_mid:
+		side->scalex_mid = luaL_checkfixed(L, 3);
+		break;
+	case side_scalex_bottom:
+		side->scalex_bottom = luaL_checkfixed(L, 3);
+		break;
+	case side_scaley_top:
+		side->scaley_top = luaL_checkfixed(L, 3);
+		break;
+	case side_scaley_mid:
+		side->scaley_mid = luaL_checkfixed(L, 3);
+		break;
+	case side_scaley_bottom:
+		side->scaley_bottom = luaL_checkfixed(L, 3);
 		break;
 	case side_toptexture:
 		side->toptexture = luaL_checkinteger(L, 3);
