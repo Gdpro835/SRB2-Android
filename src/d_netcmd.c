@@ -46,6 +46,10 @@
 #include "lua_script.h"
 #include "lua_hook.h"
 #include "m_cond.h"
+
+#ifdef HWRENDER
+#include "hardware/hw_main.h" // cv_glallowshaders
+#endif
 #include "m_anigif.h"
 #include "md5.h"
 #include "m_perfstats.h"
@@ -549,6 +553,10 @@ void D_RegisterServerCommands(void)
 	// for master server connection
 	AddMServCommands();
 
+#ifdef HWRENDER
+	CV_RegisterVar(&cv_glallowshaders);
+#endif
+
 	// p_mobj.c
 	CV_RegisterVar(&cv_itemrespawntime);
 	CV_RegisterVar(&cv_itemrespawn);
@@ -626,7 +634,6 @@ void D_RegisterServerCommands(void)
 	CV_RegisterVar(&cv_downloadspeed);
 #ifndef NONET
 	CV_RegisterVar(&cv_allownewplayer);
-	CV_RegisterVar(&cv_joinnextround);
 	CV_RegisterVar(&cv_showjoinaddress);
 	CV_RegisterVar(&cv_blamecfail);
 	CV_RegisterVar(&cv_dedicatedidletime);
@@ -656,6 +663,10 @@ void D_RegisterServerCommands(void)
 	CV_RegisterVar(&cv_addons_folder);
 
 	CV_RegisterVar(&cv_dummyconsvar);
+
+	CV_RegisterVar(&cv_chatspamprotection);
+	CV_RegisterVar(&cv_chatspamspeed);
+	CV_RegisterVar(&cv_chatspamburst);
 }
 
 // =========================================================================
@@ -683,6 +694,9 @@ void D_RegisterClientCommands(void)
 	// Monster Iestyn (12/08/19): not sure where else I could have actually put this, but oh well
 	for (i = 0; i < MAXPLAYERS; i++)
 		sprintf(player_names[i], "Player %d", 1 + i);
+
+	CV_RegisterVar(&cv_tailspickup);
+	CV_RegisterVar(&cv_allowmlook);
 
 	if (dedicated)
 		return;
@@ -800,7 +814,6 @@ void D_RegisterClientCommands(void)
 	CV_RegisterVar(&cv_chatheight);
 	CV_RegisterVar(&cv_chatwidth);
 	CV_RegisterVar(&cv_chattime);
-	CV_RegisterVar(&cv_chatspamprotection);
 	CV_RegisterVar(&cv_chatbacktint);
 	CV_RegisterVar(&cv_consolechat);
 	CV_RegisterVar(&cv_chatnotifications);

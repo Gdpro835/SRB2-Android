@@ -1587,8 +1587,6 @@ void R_RenderPlayerView(player_t *player)
 void R_RegisterEngineStuff(void)
 {
 	CV_RegisterVar(&cv_gravity);
-	CV_RegisterVar(&cv_tailspickup);
-	CV_RegisterVar(&cv_allowmlook);
 	CV_RegisterVar(&cv_homremoval);
 	CV_RegisterVar(&cv_flipcam);
 	CV_RegisterVar(&cv_flipcam2);

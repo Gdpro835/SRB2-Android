@@ -6893,7 +6893,8 @@ void HWR_AddCommands(void)
 	CV_RegisterVar(&cv_glfakecontrast);
 	CV_RegisterVar(&cv_glshearing);
 	CV_RegisterVar(&cv_glshaders);
-	CV_RegisterVar(&cv_glallowshaders);
+	// cv_glallowshaders is a netvar, and is registered in D_RegisterServerCommands
+	// so that its network id matches the PC version
 
 	CV_RegisterVar(&cv_glfiltermode);
 	CV_RegisterVar(&cv_glsolvetjoin);
