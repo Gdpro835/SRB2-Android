@@ -1014,6 +1014,9 @@ static void P_InitializeSector(sector_t *ss)
 
 	ss->extra_colormap = NULL;
 
+	ss->portal_floor = UINT32_MAX;
+	ss->portal_ceiling = UINT32_MAX;
+
 	ss->gravityptr = NULL;
 
 	ss->cullheight = NULL;
@@ -1109,6 +1112,8 @@ static void P_InitializeLinedef(line_t *ld)
 	ld->polyobj = NULL;
 
 	ld->callcount = 0;
+
+	ld->secportal = UINT32_MAX;
 
 	// cph 2006/09/30 - fix sidedef errors right away.
 	// cph 2002/07/20 - these errors are fatal if not fixed, so apply them
@@ -7908,6 +7913,7 @@ boolean P_LoadLevel(boolean fromnetsave, boolean reloadinggamestate)
 	R_InitializeLevelInterpolators();
 
 	P_InitThinkers();
+	P_InitSectorPortals();
 	R_InitMobjInterpolators();
 	P_InitCachedActions();
 

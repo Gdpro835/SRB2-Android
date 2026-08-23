@@ -21,6 +21,7 @@
 #include "p_local.h"
 #include "p_setup.h"
 #include "p_saveg.h"
+#include "hu_stuff.h" // spam_tokens, spam_tics
 #include "r_data.h"
 #include "r_fps.h"
 #include "r_textures.h"
@@ -48,6 +49,7 @@ UINT8 *save_p;
 #define ARCHIVEBLOCK_THINKERS 0x7F37037C
 #define ARCHIVEBLOCK_SPECIALS 0x7F228378
 #define ARCHIVEBLOCK_EMBLEMS  0x7F4A5445
+#define ARCHIVEBLOCK_SECPORTALS 0x7FBE34C9
 
 // Note: This cannot be bigger
 // than an UINT16
@@ -878,7 +880,8 @@ static void P_NetUnArchiveWaypoints(void)
 
 // diff5 flags
 #define SD_GRAVITY     0x01
-// 0x02 is SD_FLOORPORTAL and 0x04 is SD_CEILPORTAL in 2.2.15 (sector portals are not ported yet)
+#define SD_FLOORPORTAL 0x02
+#define SD_CEILPORTAL  0x04
 
 // sidedef flags
 enum
@@ -923,7 +926,7 @@ enum
 
 // diff2 flags
 #define LD_EXECUTORDELAY 0x01
-// 0x02 is LD_TRANSFPORTAL in 2.2.15 (sector portals are not ported yet)
+#define LD_TRANSFPORTAL  0x02
 
 static boolean P_AreArgsEqual(const line_t *li, const line_t *spawnli)
 {
@@ -1111,6 +1114,10 @@ static void ArchiveSectors(void)
 			diff4 |= SD_CYSCALE;
 		if (ss->gravity != spawnss->gravity)
 			diff5 |= SD_GRAVITY;
+		if (ss->portal_floor != spawnss->portal_floor)
+			diff5 |= SD_FLOORPORTAL;
+		if (ss->portal_ceiling != spawnss->portal_ceiling)
+			diff5 |= SD_CEILPORTAL;
 
 		if (ss->ffloors && CheckFFloorDiff(ss))
 			diff |= SD_FFLOORS;
@@ -1129,7 +1136,7 @@ static void ArchiveSectors(void)
 
 		if (diff)
 		{
-			WRITEUINT16(save_p, i);
+			WRITEUINT32(save_p, i);
 			WRITEUINT8(save_p, diff);
 			if (diff & SD_DIFF2)
 				WRITEUINT8(save_p, diff2);
@@ -1205,23 +1212,28 @@ static void ArchiveSectors(void)
 				WRITEFIXED(save_p, ss->ceilingyscale);
 			if (diff5 & SD_GRAVITY)
 				WRITEFIXED(save_p, ss->gravity);
+			if (diff5 & SD_FLOORPORTAL)
+				WRITEUINT32(save_p, ss->portal_floor);
+			if (diff5 & SD_CEILPORTAL)
+				WRITEUINT32(save_p, ss->portal_ceiling);
 			if (diff & SD_FFLOORS)
 				ArchiveFFloors(ss);
 		}
 	}
 
-	WRITEUINT16(save_p, 0xffff);
+	WRITEUINT32(save_p, 0xffffffff);
 }
 
 static void UnArchiveSectors(void)
 {
-	UINT16 i, j;
+	UINT32 i;
+	UINT16 j;
 	UINT8 diff, diff2, diff3, diff4, diff5;
 	for (;;)
 	{
-		i = READUINT16(save_p);
+		i = READUINT32(save_p);
 
-		if (i == 0xffff)
+		if (i == 0xffffffff)
 			break;
 
 		if (i > numsectors)
@@ -1338,6 +1350,10 @@ static void UnArchiveSectors(void)
 			sectors[i].ceilingyscale = READFIXED(save_p);
 		if (diff5 & SD_GRAVITY)
 			sectors[i].gravity = READFIXED(save_p);
+		if (diff5 & SD_FLOORPORTAL)
+			sectors[i].portal_floor = READUINT32(save_p);
+		if (diff5 & SD_CEILPORTAL)
+			sectors[i].portal_ceiling = READUINT32(save_p);
 
 		if (diff & SD_FFLOORS)
 			UnArchiveFFloors(&sectors[i]);
@@ -1548,6 +1564,9 @@ static void ArchiveLines(void)
 		if (li->executordelay != spawnli->executordelay)
 			diff2 |= LD_EXECUTORDELAY;
 
+		if (li->secportal != spawnli->secportal)
+			diff2 |= LD_TRANSFPORTAL;
+
 		if (li->sidenum[0] != 0xffff)
 		{
 			side1diff = GetSideDiff(&sides[li->sidenum[0]], &spawnsides[li->sidenum[0]]);
@@ -1607,6 +1626,8 @@ static void ArchiveLines(void)
 				ArchiveSide(&sides[li->sidenum[1]], side2diff);
 			if (diff2 & LD_EXECUTORDELAY)
 				WRITEINT32(save_p, li->executordelay);
+			if (diff2 & LD_TRANSFPORTAL)
+				WRITEUINT32(save_p, li->secportal);
 		}
 	}
 	WRITEUINT32(save_p, 0xffffffff);
@@ -1675,6 +1696,8 @@ static void UnArchiveLines(void)
 			UnArchiveSide(&sides[li->sidenum[1]]);
 		if (diff2 & LD_EXECUTORDELAY)
 			li->executordelay = READINT32(save_p);
+		if (diff2 & LD_TRANSFPORTAL)
+			li->secportal = READUINT32(save_p);
 	}
 }
 
@@ -4593,6 +4616,12 @@ static void P_NetArchiveMisc(boolean resending)
 		WRITEUINT8(save_p, 0x2f);
 	else
 		WRITEUINT8(save_p, 0x2e);
+
+	for (i = 0; i < MAXPLAYERS; i++)
+	{
+		WRITEUINT8(save_p, spam_tokens[i]);
+		WRITEUINT32(save_p, spam_tics[i]);
+	}
 }
 
 static inline boolean P_NetUnArchiveMisc(boolean reloading)
@@ -4689,6 +4718,12 @@ static inline boolean P_NetUnArchiveMisc(boolean reloading)
 	// Is it paused?
 	if (READUINT8(save_p) == 0x2f)
 		paused = true;
+
+	for (i = 0; i < MAXPLAYERS; i++)
+	{
+		spam_tokens[i] = READUINT8(save_p);
+		spam_tics[i] = READUINT32(save_p);
+	}
 
 	return true;
 }
@@ -5009,6 +5044,90 @@ void P_SaveGame(INT16 mapnum)
 	P_ArchiveLuabanksAndConsistency();
 }
 
+static void P_NetArchiveSectorPortals(void)
+{
+	size_t i;
+
+	WRITEUINT32(save_p, ARCHIVEBLOCK_SECPORTALS);
+
+	WRITEUINT32(save_p, (UINT32)secportalcount);
+
+	for (i = 0; i < secportalcount; i++)
+	{
+		UINT8 type = secportals[i].type;
+
+		WRITEUINT8(save_p, type);
+		WRITEUINT8(save_p, secportals[i].ceiling ? 1 : 0);
+		WRITEUINT32(save_p, SaveSector(secportals[i].target));
+
+		switch (type)
+		{
+		case SECPORTAL_LINE:
+			WRITEUINT32(save_p, SaveLine(secportals[i].line.start));
+			WRITEUINT32(save_p, SaveLine(secportals[i].line.dest));
+			break;
+		case SECPORTAL_PLANE:
+		case SECPORTAL_HORIZON:
+		case SECPORTAL_FLOOR:
+		case SECPORTAL_CEILING:
+			WRITEUINT32(save_p, SaveSector(secportals[i].sector));
+			break;
+		case SECPORTAL_OBJECT:
+			if (!P_MobjWasRemoved(secportals[i].mobj))
+				WRITEUINT32(save_p, SaveMobjnum(secportals[i].mobj));
+			else
+				WRITEUINT32(save_p, 0);
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+static void P_NetUnArchiveSectorPortals(void)
+{
+	UINT32 count, i;
+
+	if (READUINT32(save_p) != ARCHIVEBLOCK_SECPORTALS)
+		I_Error("Bad $$$.sav at archive block Secportals");
+
+	Z_Free(secportals);
+	P_InitSectorPortals();
+
+	count = READUINT32(save_p);
+
+	for (i = 0; i < count; i++)
+	{
+		UINT32 id = P_NewSectorPortal();
+
+		sectorportal_t *secportal = &secportals[id];
+
+		secportal->type = READUINT8(save_p);
+		secportal->ceiling = (READUINT8(save_p) != 0) ? true : false;
+		secportal->target = LoadSector(READUINT32(save_p));
+
+		switch (secportal->type)
+		{
+		case SECPORTAL_LINE:
+			secportal->line.start = LoadLine(READUINT32(save_p));
+			secportal->line.dest = LoadLine(READUINT32(save_p));
+			break;
+		case SECPORTAL_PLANE:
+		case SECPORTAL_HORIZON:
+		case SECPORTAL_FLOOR:
+		case SECPORTAL_CEILING:
+			secportal->sector = LoadSector(READUINT32(save_p));
+			break;
+		case SECPORTAL_OBJECT:
+			id = READUINT32(save_p);
+			secportal->mobj = (id == 0) ? NULL : P_FindNewPosition(id);
+			break;
+		default:
+			break;
+		}
+	}
+}
+
 void P_SaveNetGame(boolean resending)
 {
 	thinker_t *th;
@@ -5040,6 +5159,7 @@ void P_SaveNetGame(boolean resending)
 		P_NetArchiveSpecials();
 		P_NetArchiveColormaps();
 		P_NetArchiveWaypoints();
+		P_NetArchiveSectorPortals();
 	}
 	LUA_Archive();
 
@@ -5080,6 +5200,7 @@ boolean P_LoadNetGame(boolean reloading)
 		P_NetUnArchiveSpecials();
 		P_NetUnArchiveColormaps();
 		P_NetUnArchiveWaypoints();
+		P_NetUnArchiveSectorPortals();
 		P_RelinkPointers();
 		P_FinishMobjs();
 	}
