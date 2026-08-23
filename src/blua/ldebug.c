@@ -16,7 +16,6 @@
 #include "lua.h"
 
 #include "lapi.h"
-#include "lauxlib.h"
 #include "lcode.h"
 #include "ldebug.h"
 #include "ldo.h"
@@ -248,12 +247,12 @@ LUA_API int lua_getinfo (lua_State *L, const char *what, lua_Debug *ar) {
     f = clvalue(ci->func);
   }
   status = auxgetinfo(L, what, ar, f, ci);
-  if (luaL_strchr(what, 'f')) {
+  if (strchr(what, 'f')) {
     if (f == NULL) setnilvalue(L->top);
     else setclvalue(L, L->top, f);
     incr_top(L);
   }
-  if (luaL_strchr(what, 'L'))
+  if (strchr(what, 'L'))
     collectvalidlines(L, f);
   lua_unlock(L);
   return status;

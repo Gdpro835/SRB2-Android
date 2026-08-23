@@ -11,7 +11,6 @@
 #define _HW_MODEL_H_
 
 #include "../doomtype.h"
-#include "../w_wad.h"
 
 typedef struct
 {
@@ -62,6 +61,8 @@ typedef struct mesh_s
 	float *uvs;
 	// if uv adjustment is needed, uvs is changed to point to adjusted ones and
 	// this one retains the originals
+	// note: this member has been added with the assumption that models are never freed.
+	// (UnloadModel is called by nobody at the time of writing.)
 	float *originaluvs;
 	float *lightuvs;
 
@@ -90,18 +91,17 @@ typedef struct model_s
 {
 	int maxNumFrames;
 
-	int numMaterials;
-	material_t *materials;
 	int numMeshes;
 	mesh_t *meshes;
+	int numMaterials;
+	material_t *materials;
 	int numTags;
 	tag_t *tags;
 
-	boolean hasVBOs;
-
-	char *framenames;
+	char *frameNames;
 	boolean interpolate[256];
 	modelspr2frames_t *spr2frames;
+	modelspr2frames_t *superspr2frames;
 
 	// the max_s and max_t values that the uvs are currently adjusted to
 	// (if a sprite is used as a texture)
@@ -119,7 +119,7 @@ extern model_t *modelHead;
 void HWR_ReloadModels(void);
 
 tag_t *GetTagByName(model_t *model, char *name, int frame);
-model_t *LoadModel(const char *filename, int ztag, wadfile_t *wadfile);
+model_t *LoadModel(const char *filename, int ztag);
 void UnloadModel(model_t *model);
 void Optimize(model_t *model);
 void LoadModelInterpolationSettings(model_t *model);
@@ -128,5 +128,6 @@ void GenerateVertexNormals(model_t *model);
 void GeneratePolygonNormals(model_t *model, int ztag);
 void CreateVBOTiny(mesh_t *mesh, tinyframe_t *frame);
 void CreateVBO(mesh_t *mesh, mdlframe_t *frame);
+void DeleteVBOs(model_t *model);
 
 #endif

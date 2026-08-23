@@ -14,14 +14,6 @@ mkdir=mkdir -p
 cat=cat
 endif
 
-ifndef MAKE_DIR
-MAKE_DIR:=Makefile.d/
-endif
-
-ifdef ANDROID
-LINUX64=1
-endif
-
 ifdef LINUX64
 LINUX=1
 endif
@@ -43,6 +35,10 @@ endif
 else ifdef FREEBSD
 UNIX=1
 platform=freebsd
+else ifdef HAIKU
+# Give Haiku its own configuration, since it
+# isn't actually UNIX.
+include Makefile.d/haiku.mk
 else ifdef SOLARIS # FIXME: UNTESTED
 UNIX=1
 platform=solaris
@@ -60,7 +56,7 @@ platform=mingw/64
 else
 platform=mingw
 endif
-include $(MAKE_DIR)/win32.mk
+include Makefile.d/win32.mk
 endif
 
 ifdef platform
@@ -68,11 +64,13 @@ makedir:=$(makedir)/$(platform)
 endif
 
 ifdef UNIX
-include $(MAKE_DIR)/nix.mk
+include Makefile.d/nix.mk
 endif
 
 ifeq ($(SDL), 1)
-include $(MAKE_DIR)/sdl.mk
-else ifndef ANDROID
-include $(MAKE_DIR)/dummy.mk
+include Makefile.d/sdl.mk
+else ifeq ($(DEDICATED), 1)
+include Makefile.d/dedicated.mk
+else
+include Makefile.d/dummy.mk
 endif

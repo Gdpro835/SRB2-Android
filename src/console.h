@@ -1,7 +1,7 @@
 // SONIC ROBO BLAST 2
 //-----------------------------------------------------------------------------
 // Copyright (C) 1998-2000 by DooM Legacy Team.
-// Copyright (C) 1999-2023 by Sonic Team Junior.
+// Copyright (C) 1999-2024 by Sonic Team Junior.
 //
 // This program is free software distributed under the
 // terms of the GNU General Public License, version 2.
@@ -34,14 +34,9 @@ extern boolean con_startup;
 // needs explicit screen refresh until we are in the main game loop
 extern boolean con_refresh;
 
-// top clip value for view render: do not draw part of view hidden by console
-extern INT32 con_clipviewtop;
-
 // 0 means console if off, or moving out
 extern INT32 con_destlines;
 
-extern INT32 con_clearlines; // lines of top of screen to refresh
-extern boolean con_hudupdate; // hud messages have changed, need refresh
 extern UINT32 con_scalefactor; // console text scale factor
 
 extern consvar_t cons_backcolor;
@@ -65,11 +60,5 @@ void CON_ToggleOff(void);
 
 // Is console down?
 boolean CON_Ready(void);
-
-// Can the console be used?
-boolean CON_Allowed(void);
-
-// Toggle the console
-void CON_Toggle(void);
 
 void CON_LogMessage(const char *msg);

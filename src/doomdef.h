@@ -2,7 +2,7 @@
 //-----------------------------------------------------------------------------
 // Copyright (C) 1993-1996 by id Software, Inc.
 // Copyright (C) 1998-2000 by DooM Legacy Team.
-// Copyright (C) 1999-2023 by Sonic Team Junior.
+// Copyright (C) 1999-2024 by Sonic Team Junior.
 //
 // This program is free software distributed under the
 // terms of the GNU General Public License, version 2.
@@ -83,6 +83,7 @@
 #include "version.h"
 #include "doomtype.h"
 
+#include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -110,10 +111,18 @@ FILE *fopenfile(const char*, const char*);
 
 // If you don't disable ALL debug first, you get ALL debug enabled
 #if !defined (NDEBUG)
+#ifndef PACKETDROP
 #define PACKETDROP
+#endif
+#ifndef PARANOIA
 #define PARANOIA
+#endif
+#ifndef RANGECHECK
 #define RANGECHECK
+#endif
+#ifndef ZDEBUG
 #define ZDEBUG
+#endif
 #endif
 
 // Uncheck this to compile debugging code
@@ -229,7 +238,8 @@ extern char logfilename[1024];
 "You will not be able to connect to\n"\
 "the Master Server until you update to\n"\
 "the newest version of the game.\n"\
-"\n%s"
+"\n"\
+"(Press a key)\n"
 
 // The string used in the I_Error alert upon trying to host through command line parameters.
 // Generally less filled with newlines, since Windows gives you lots more room to work with.
@@ -270,9 +280,16 @@ extern char logfilename[1024];
 // NOTE: it needs more than this to increase the number of players...
 
 #define MAXPLAYERS 32
-#define MAXSKINS 32
-#define PLAYERSMASK (MAXPLAYERS-1)
 #define MAXPLAYERNAME 21
+#define PLAYERSMASK (MAXPLAYERS-1)
+
+// Don't make MAXSKINS higher than 255, since skin numbers are used with an UINT8 in
+// various parts of the codebase, and one number is reserved. If you do anyway,
+// the data type of those variables will have to be changed into at least an UINT16.
+// This change must affect code such as demo recording and playback,
+// and the structure of some networking packets and commands.
+#define MAXSKINS 255
+#define MAXCHARACTERSLOTS (MAXSKINS * 3) // Should be higher than MAXSKINS.
 
 #define COLORRAMPSIZE 16
 #define MAXCOLORNAME 32
@@ -584,7 +601,7 @@ extern char *curliveeventbackup;
 #define M_GetText(x) (x)
 #endif
 void M_StartupLocale(void);
-
+void *M_Memcpy(void* dest, const void* src, size_t n);
 char *va(const char *format, ...) FUNCPRINTF;
 
 #if defined(__ANDROID__)
@@ -600,23 +617,19 @@ char *va(const char *format, ...) FUNCPRINTF;
 
 char *M_GetToken(const char *inputString);
 void M_UnGetToken(void);
-void M_TokenizerOpen(const char *inputString);
+void M_TokenizerOpen(const char *inputString, size_t len);
 void M_TokenizerClose(void);
 const char *M_TokenizerRead(UINT32 i);
+const char *M_TokenizerReadZDoom(UINT32 i);
 UINT32 M_TokenizerGetEndPos(void);
+void M_TokenizerSetEndPos(UINT32 newPos);
+UINT32 M_GetTokenPos(void);
 void M_TokenizerSetEndPos(UINT32 newPos);
 char *sizeu1(size_t num);
 char *sizeu2(size_t num);
 char *sizeu3(size_t num);
 char *sizeu4(size_t num);
 char *sizeu5(size_t num);
-
-char *M_GetToken(const char *inputString);
-void M_UnGetToken(void);
-UINT32 M_GetTokenPos(void);
-void M_SetTokenPos(UINT32 newPos);
-
-extern void *(*M_Memcpy)(void* dest, const void* src, size_t n) FUNCNONNULL;
 
 // d_main.c
 extern int    VERSION;
@@ -702,6 +715,7 @@ UINT32 quickncasehash (const char *p, size_t n)
 #else
 #define I_Assert(e) ((void)0)
 #endif
+#define I_StaticAssert(e) static_assert(e, "Static assertion failed: " #e)
 
 // The character that separates pathnames. Forward slash on
 // most systems, but reverse solidus (\) on Windows.
@@ -742,14 +756,13 @@ extern int
 ///	\note	XMOD port.
 //#define WEIGHTEDRECYCLER
 
-/// Splash screen
-#ifdef MOBILE_PLATFORM
-#define SPLASH_SCREEN
-#endif
+///	Allow loading of savegames between different versions of the game.
+///	\note	XMOD port.
+///	    	Most modifications should probably enable this.
+//#define SAVEGAME_OTHERVERSIONS
 
-/// Breadcrumb navigation
-/// https://developer.android.com/training/tv/start/controllers#back-button
-#define BREADCRUMB
+///	Shuffle's incomplete OpenGL sorting code.
+#define SHUFFLE // This has nothing to do with sorting, why was it disabled?
 
 ///	Allow the use of the SOC RESETINFO command.
 ///	\note	Builds that are tight on memory should disable this.
@@ -764,19 +777,8 @@ extern int
 /// Experimental attempts at preventing MF_PAPERCOLLISION objects from getting stuck in walls.
 //#define PAPER_COLLISIONCORRECTION
 
-/// FINALLY some real clipping that doesn't make walls dissappear AND speeds the game up
-/// (that was the original comment from SRB2CB, sadly it is a lie and actually slows game down)
-/// on the bright side it fixes some weird issues with translucent walls
-/// \note	SRB2CB port.
-///      	SRB2CB itself ported this from PrBoom+
-#define NEWCLIP
-
 /// OpenGL shaders
 #define GL_SHADERS
-
-#if defined(HAVE_GLES2) && !defined(GL_SHADERS)
-#define GL_SHADERS
-#endif
 
 /// Handle touching sector specials in P_PlayerAfterThink instead of P_PlayerThink.
 /// \note   Required for proper collision with moving sloped surfaces that have sector specials on them.
@@ -792,13 +794,10 @@ extern int
 #define NO_PNG_LUMPS
 #endif
 
-/// Render flats on walls
-#define WALLFLATS
-
 /// Maintain compatibility with older 2.2 demos
 #define OLD22DEMOCOMPAT
 
-#if defined (HAVE_CURL) && ! defined (NONET)
+#ifdef HAVE_CURL
 #define MASTERSERVER
 #else
 #undef UPDATE_ALERT

@@ -1,9 +1,5 @@
 string.c
 d_main.c
-d_clisrv.c
-d_net.c
-d_netfil.c
-d_netcmd.c
 dehacked.c
 deh_soc.c
 deh_lua.c
@@ -17,6 +13,10 @@ g_input.c
 ts_main.c
 ts_draw.c
 ts_custom.c
+hu_font.c
+m_textreader.c
+w_handle.c
+r_draw16.c
 am_map.c
 command.c
 console.c
@@ -35,9 +35,10 @@ m_fixed.c
 m_menu.c
 m_misc.c
 m_perfstats.c
-m_textreader.c
 m_random.c
+m_tokenizer.c
 m_queue.c
+m_vector.c
 info.c
 p_ceilng.c
 p_enemy.c
@@ -70,6 +71,7 @@ r_splats.c
 r_things.c
 r_bbox.c
 r_textures.c
+r_translation.c
 r_patch.c
 r_patchrotation.c
 r_picformats.c
@@ -80,14 +82,11 @@ v_video.c
 s_sound.c
 sounds.c
 w_wad.c
-w_handle.c
 filesrch.c
-mserv.c
-http-mserv.c
-i_tcp.c
 lzf.c
 b_bot.c
 u_list.c
+snake.c
 lua_script.c
 lua_baselib.c
 lua_mathlib.c
@@ -105,3 +104,4 @@ lua_blockmaplib.c
 lua_hudlib.c
 lua_hudlib_drawlist.c
 lua_inputlib.c
+lua_colorlib.c

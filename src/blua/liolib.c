@@ -19,7 +19,8 @@
 #include "lualib.h"
 #include "../i_system.h"
 #include "../g_game.h"
-#include "../d_netfil.h"
+#include "../netcode/d_netfil.h"
+#include "../netcode/net_command.h"
 #include "../lua_libs.h"
 #include "../byteptr.h"
 #include "../lua_script.h"
@@ -188,7 +189,7 @@ static int CheckFileName(lua_State *L, const char *filename)
 	boolean pass = false;
 	size_t i;
 
-	if (luaL_strchr(filename, '\\'))
+	if (strchr(filename, '\\'))
 	{
 		luaL_error(L, "access denied to %s: \\ is not allowed, use / instead", filename);
 		return pushresult(L,0,filename);
@@ -201,7 +202,7 @@ static int CheckFileName(lua_State *L, const char *filename)
 			break;
 		}
 	if (strstr(filename, "./")
-		|| strstr(filename, "..") || luaL_strchr(filename, ':')
+		|| strstr(filename, "..") || strchr(filename, ':')
 		|| filename[0] == '/'
 		|| !pass)
 	{
@@ -223,7 +224,7 @@ static int io_open (lua_State *L) {
 
 	luaL_checktype(L, 3, LUA_TFUNCTION);
 
-	if (!(luaL_strchr(mode, 'r') || luaL_strchr(mode, '+')))
+	if (!(strchr(mode, 'r') || strchr(mode, '+')))
 		luaL_error(L, "open() is only for reading, use openlocal() for writing");
 
 	AddLuaFileTransfer(filename, mode);

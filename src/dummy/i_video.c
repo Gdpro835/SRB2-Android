@@ -5,8 +5,6 @@
 rendermode_t rendermode = render_none;
 rendermode_t chosenrendermode = render_none;
 
-boolean highcolor = false;
-
 boolean allow_fullscreen = false;
 
 consvar_t cv_vidwait = CVAR_INIT ("vid_wait", "On", CV_SAVE, CV_OnOff, NULL);
@@ -41,12 +39,10 @@ INT32 VID_SetMode(INT32 modenum)
 	return 0;
 }
 
-INT32 VID_CheckRenderer(void)
+boolean VID_CheckRenderer(void)
 {
-	return 0;
+	return false;
 }
-
-void VID_DisplayGLError(void) {}
 
 void VID_CheckGLLoaded(rendermode_t oldrender)
 {
@@ -67,11 +63,6 @@ void I_FinishUpdate(void){}
 
 void I_UpdateNoVsync(void) {}
 
-INT32 I_AppOnBackground(void)
-{
-	return 0;
-}
-
 void I_WaitVBL(INT32 count)
 {
 	(void)count;
@@ -85,9 +76,4 @@ void I_ReadScreen(UINT8 *scr)
 void I_BeginRead(void){}
 
 void I_EndRead(void){}
-
-void I_ReportProgress(int progress)
-{
-	(void)progress;
-}
 

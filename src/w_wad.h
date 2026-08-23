@@ -2,7 +2,7 @@
 //-----------------------------------------------------------------------------
 // Copyright (C) 1993-1996 by id Software, Inc.
 // Copyright (C) 1998-2000 by DooM Legacy Team.
-// Copyright (C) 1999-2023 by Sonic Team Junior.
+// Copyright (C) 1999-2024 by Sonic Team Junior.
 //
 // This program is free software distributed under the
 // terms of the GNU General Public License, version 2.
@@ -13,8 +13,6 @@
 
 #ifndef __W_WAD__
 #define __W_WAD__
-
-#include "w_handle.h"
 
 #ifdef HWRENDER
 #include "hardware/hw_data.h"
@@ -132,7 +130,7 @@ typedef struct wadfile_s
 	lumpcache_t *patchcache;
 	UINT16 numlumps; // this wad's number of resources
 	UINT16 foldercount; // folder count
-	void *handle;
+	FILE *handle;
 	UINT32 filesize; // for network
 	UINT8 md5sum[16];
 
@@ -147,83 +145,28 @@ extern wadfile_t **wadfiles;
 
 typedef struct
 {
-	size_t numfiles;
 	char **files;
-	const char **hashes;
+	size_t numfiles;
 } addfilelist_t;
 
 // =========================================================================
 
 void W_Shutdown(void);
 
-// Opens a WAD file. Returns the file handle for the file, or NULL if not found or could not be opened
-void *W_OpenWadFile(const char **filename, fhandletype_t type, boolean useerrors);
-
+// Opens a WAD file. Returns the FILE * handle for the file, or NULL if not found or could not be opened
+FILE *W_OpenWadFile(const char **filename, boolean useerrors);
 // Load and add a wadfile to the active wad files, returns numbers of lumps, INT16_MAX on error
-UINT16 W_InitFile(const char *filename, fhandletype_t handletype, boolean mainfile, boolean startup);
-
+UINT16 W_InitFile(const char *filename, boolean mainfile, boolean startup);
 // Adds a folder as a file
 UINT16 W_InitFolder(const char *path, boolean mainfile, boolean startup);
 
-// Loads a wadfile, but doesn't add it to the active wad files.
-wadfile_t *W_LoadResourceFile(const char *filename, fhandletype_t handletype);
-
-// Deletes a wadfile.
-void W_DeleteResourceFile(wadfile_t *wad);
-
 // W_InitMultipleFiles exits if a file was not found, but not if all is okay.
-void W_InitMultipleFiles(addfilelist_t *list, fhandletype_t handletype);
+void W_InitMultipleFiles(addfilelist_t *list);
 
 #define W_FileHasFolders(wadfile) ((wadfile)->type == RET_PK3 || (wadfile)->type == RET_FOLDER)
 
-// Prints an error in the console if something goes wrong while adding a file.
-// If it's an exit-worthy error, W_InitFileError will display such error message.
-void W_FileLoadError(const char *fmt, ...);
-
 INT32 W_IsPathToFolderValid(const char *path);
 char *W_GetFullFolderPath(const char *path);
-
-// File unpacking
-#ifdef UNPACK_FILES
-
-// Unpacks a file into user storage.
-boolean W_UnpackFile(const char *filename, void *handle);
-
-// Checks if a file can be unpacked.
-boolean W_CanUnpackFile(const char *filename, const char *hash, size_t *filesize);
-
-// Unpack the main files needed at startup.
-void W_UnpackMultipleFiles(addfilelist_t *list, boolean checkhash);
-void W_UnpackBaseFiles(void);
-
-#define UNPACK_BUFFER_SIZE 4096
-
-// Reports unpacking progress
-typedef struct unpack_progress_s
-{
-	int status;
-	int totalfiles;
-	boolean report;
-} unpack_progress_t;
-extern unpack_progress_t unpack_progress;
-
-void UnpackFile_ProgressClear(void);
-void UnpackFile_ProgressSetReportFlag(boolean flag);
-void UnpackFile_ProgressSetTotalFiles(int files);
-void UnpackFile_ProgressReport(int progress);
-
-#ifdef UNPACK_FILES_DEBUG
-void Command_Unpacktest_f(void);
-#endif
-
-#endif
-
-UINT16 Resource_CheckNumForName(wadfile_t *wad, const char *name);
-void *Resource_CacheLumpNum(wadfile_t *wad, UINT16 lump, INT32 tag);
-void *Resource_CacheLumpName(wadfile_t *wad, const char *name, INT32 tag);
-boolean Resource_LumpExists(wadfile_t *wad, const char *name);
-size_t Resource_LumpLength(wadfile_t *wad, UINT16 lump);
-size_t Resource_ReadLumpHeader(wadfile_t *wad, UINT16 lump, void *dest, size_t size, size_t offset);
 
 const char *W_CheckNameForNumPwad(UINT16 wad, UINT16 lump);
 const char *W_CheckNameForNum(lumpnum_t lumpnum);
@@ -240,11 +183,22 @@ UINT16 W_CheckNumForFolderEndPK3(const char *name, UINT16 wad, UINT16 startlump)
 char *W_GetLumpFolderPathPK3(UINT16 wad, UINT16 lump);
 char *W_GetLumpFolderNamePK3(UINT16 wad, UINT16 lump);
 
+void W_GetFolderLumpsPwad(const char *name, UINT16 wad, UINT32 **list, UINT16 *list_capacity, UINT16 *numlumps);
+void W_GetFolderLumps(const char *name, UINT32 **list, UINT16 *list_capacity, UINT16 *numlumps);
+UINT32 W_CountFolderLumpsPwad(const char *name, UINT16 wad);
+UINT32 W_CountFolderLumps(const char *name);
+
 lumpnum_t W_CheckNumForMap(const char *name);
 lumpnum_t W_CheckNumForName(const char *name);
 lumpnum_t W_CheckNumForLongName(const char *name);
 lumpnum_t W_GetNumForName(const char *name); // like W_CheckNumForName but I_Error on LUMPERROR
 lumpnum_t W_GetNumForLongName(const char *name);
+
+lumpnum_t W_CheckNumForPatchName(const char *name);
+lumpnum_t W_CheckNumForLongPatchName(const char *name);
+lumpnum_t W_GetNumForPatchName(const char *name); // like W_CheckNumForPatchName but I_Error on LUMPERROR
+lumpnum_t W_GetNumForLongPatchName(const char *name);
+
 lumpnum_t W_CheckNumForNameInBlock(const char *name, const char *blockstart, const char *blockend);
 UINT8 W_LumpExists(const char *name); // Lua uses this.
 
@@ -269,29 +223,23 @@ void *W_CacheLumpNumForce(lumpnum_t lumpnum, INT32 tag);
 
 boolean W_IsLumpCached(lumpnum_t lump, void *ptr);
 boolean W_IsPatchCached(lumpnum_t lump, void *ptr);
+boolean W_IsPatchCachedPwad(UINT16 wad, UINT16 lump, void *ptr);
 
 void *W_CacheLumpName(const char *name, INT32 tag);
 void *W_CachePatchName(const char *name, INT32 tag);
 void *W_CachePatchLongName(const char *name, INT32 tag);
 
-// Returns either a Software patch, or an OpenGL patch.
-// Performs any necessary conversions from PNG images.
 void *W_CachePatchNumPwad(UINT16 wad, UINT16 lump, INT32 tag);
 void *W_CachePatchNum(lumpnum_t lumpnum, INT32 tag);
+void *W_GetCachedPatchNumPwad(UINT16 wad, UINT16 lump);
 
-// Reads a patch header from a lump, without caching the whole patch.
-// Returns true and fills the out parameters on success, false otherwise.
-boolean W_ReadPatchHeaderPwad(UINT16 wad, UINT16 lump, INT16 *width, INT16 *height, INT16 *topoffset, INT16 *leftoffset);
-
-// Returns a Software patch.
-// Performs any necessary conversions from PNG images.
-void *W_CacheSoftwarePatchNumPwad(UINT16 wad, UINT16 lump, INT32 tag);
-void *W_CacheSoftwarePatchNum(lumpnum_t lumpnum, INT32 tag);
+boolean W_ReadPatchHeaderPwad(UINT16 wadnum, UINT16 lumpnum, INT16 *width, INT16 *height, INT16 *topoffset, INT16 *leftoffset);
+boolean W_ReadPatchHeader(lumpnum_t lumpnum, INT16 *width, INT16 *height, INT16 *topoffset, INT16 *leftoffset);
 
 void W_UnlockCachedPatch(void *patch);
 
 void W_VerifyFileMD5(UINT16 wadfilenum, const char *matchmd5);
 
-int W_VerifyNMUSlumps(const char *filename, fhandletype_t type, boolean exit_on_error);
+int W_VerifyNMUSlumps(const char *filename, boolean exit_on_error);
 
 #endif // __W_WAD__

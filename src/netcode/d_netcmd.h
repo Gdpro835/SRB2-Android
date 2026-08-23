@@ -1,7 +1,7 @@
 // SONIC ROBO BLAST 2
 //-----------------------------------------------------------------------------
 // Copyright (C) 1998-2000 by DooM Legacy Team.
-// Copyright (C) 1999-2023 by Sonic Team Junior.
+// Copyright (C) 1999-2024 by Sonic Team Junior.
 //
 // This program is free software distributed under the
 // terms of the GNU General Public License, version 2.
@@ -15,8 +15,7 @@
 #ifndef __D_NETCMD__
 #define __D_NETCMD__
 
-#include "command.h"
-#include "g_input.h"
+#include "../command.h"
 
 // console vars
 extern consvar_t cv_playername;
@@ -36,14 +35,6 @@ extern consvar_t cv_seenames, cv_allowseenames;
 extern consvar_t cv_usemouse;
 extern consvar_t cv_usejoystick;
 extern consvar_t cv_usejoystick2;
-
-#ifdef ACCELEROMETER
-extern consvar_t cv_useaccelerometer;
-extern consvar_t cv_accelscale;
-extern consvar_t cv_acceltilt;
-extern consvar_t cv_acceldeadzone;
-#endif
-
 #ifdef LJOYSTICK
 extern consvar_t cv_joyport;
 extern consvar_t cv_joyport2;
@@ -103,7 +94,10 @@ extern consvar_t cv_inttime, cv_coopstarposts, cv_cooplives, cv_advancemap, cv_p
 extern consvar_t cv_overtime;
 extern consvar_t cv_startinglives;
 
-// for F_finale.c
+extern consvar_t cv_gravity, cv_movebob;
+extern consvar_t cv_tailspickup;
+
+// for f_finale.c
 extern consvar_t cv_rollingdemos;
 
 extern consvar_t cv_ringslinger, cv_soundtest;
@@ -118,7 +112,6 @@ extern consvar_t cv_skipmapcheck;
 
 extern consvar_t cv_sleep;
 
-extern consvar_t cv_thinkless;
 extern consvar_t cv_perfstats;
 extern consvar_t cv_ps_samplesize;
 extern consvar_t cv_ps_descriptor;
@@ -156,6 +149,7 @@ typedef enum
 	XD_LUACMD,      // 22
 	XD_LUAVAR,      // 23
 	XD_LUAFILE,     // 24
+	XD_MUTEPLAYER,  // 25
 	MAXNETXCMD
 } netxcmd_t;
 
@@ -210,7 +204,6 @@ void D_SendPlayerConfig(void);
 void Command_ExitGame_f(void);
 void Command_Retry_f(void);
 void D_GameTypeChanged(INT32 lastgametype); // not a real _OnChange function anymore
-void D_SendExitLevel(boolean cheat);
 void D_MapChange(INT32 pmapnum, INT32 pgametype, boolean pultmode, boolean presetplayers, INT32 pdelay, boolean pskipprecutscene, boolean pfromlevelselect);
 boolean IsPlayerAdmin(INT32 playernum);
 void SetAdminPlayer(INT32 playernum);
@@ -218,6 +211,7 @@ void ClearAdminPlayers(void);
 void RemoveAdminPlayer(INT32 playernum);
 void ItemFinder_OnChange(void);
 void D_SetPassword(const char *pw);
+void D_ClearPassword(void);
 
 // used for the player setup menu
 UINT8 CanChangeSkin(INT32 playernum);

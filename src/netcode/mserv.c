@@ -1,7 +1,7 @@
 // SONIC ROBO BLAST 2
 //-----------------------------------------------------------------------------
 // Copyright (C) 1998-2000 by DooM Legacy Team.
-// Copyright (C) 1999-2023 by Sonic Team Junior.
+// Copyright (C) 1999-2024 by Sonic Team Junior.
 // Copyright (C) 2020-2023 by James R.
 //
 // This program is free software distributed under the
@@ -15,14 +15,14 @@
 #include <time.h>
 #endif
 
-#include "doomstat.h"
-#include "doomdef.h"
-#include "command.h"
-#include "i_threads.h"
+#include "../doomstat.h"
+#include "../doomdef.h"
+#include "../command.h"
+#include "../i_threads.h"
 #include "mserv.h"
-#include "m_menu.h"
-#include "ts_main.h" // touchscreenavailable
-#include "z_zone.h"
+#include "client_connection.h"
+#include "../m_menu.h"
+#include "../z_zone.h"
 
 #ifdef MASTERSERVER
 
@@ -46,15 +46,16 @@ static I_cond  MSCond;
 #  define Unlock_state()
 #endif/*HAVE_THREADS*/
 
-#ifndef NONET
 static void Command_Listserv_f(void);
-#endif
 
 #endif/*MASTERSERVER*/
+
+static boolean ServerName_CanChange (const char*);
 
 static void Update_parameters (void);
 
 static void MasterServer_OnChange(void);
+static void RoomId_OnChange(void);
 
 static CV_PossibleValue_t masterserver_update_rate_cons_t[] = {
 	{2,  "MIN"},
@@ -63,11 +64,13 @@ static CV_PossibleValue_t masterserver_update_rate_cons_t[] = {
 };
 
 consvar_t cv_masterserver = CVAR_INIT ("masterserver", "https://ds.ms.srb2.org/MS/0", CV_SAVE|CV_CALL, NULL, MasterServer_OnChange);
-consvar_t cv_servername = CVAR_INIT ("servername", "SRB2 server", CV_SAVE|CV_NETVAR|CV_CALL|CV_NOINIT|CV_ALLOWLUA, NULL, Update_parameters);
+consvar_t cv_servername = CVAR_INIT_WITH_CALLBACKS ("servername", "SRB2 server", CV_SAVE|CV_NETVAR|CV_CALL|CV_NOINIT|CV_ALLOWLUA, NULL, Update_parameters, ServerName_CanChange);
 
 consvar_t cv_masterserver_update_rate = CVAR_INIT ("masterserver_update_rate", "15", CV_SAVE|CV_CALL|CV_NOINIT, masterserver_update_rate_cons_t, Update_parameters);
+CV_PossibleValue_t cv_masterserver_room_values[] = {{-1, "MIN"}, {999999999, "MAX"}, {0, NULL}};
+consvar_t cv_masterserver_room_id = CVAR_INIT ("masterserver_room_id", "-1", CV_CALL, cv_masterserver_room_values, RoomId_OnChange);
 
-INT16 ms_RoomId = -1;
+static INT16 ms_RoomId = -1;
 
 #if defined (MASTERSERVER) && defined (HAVE_THREADS)
 int           ms_QueryId;
@@ -90,9 +93,9 @@ msg_rooms_t room_list[NUM_LIST_ROOMS+1]; // +1 for easy test
   */
 void AddMServCommands(void)
 {
-#ifndef NONET
 	CV_RegisterVar(&cv_masterserver);
 	CV_RegisterVar(&cv_masterserver_update_rate);
+	CV_RegisterVar(&cv_masterserver_room_id);
 	CV_RegisterVar(&cv_masterserver_timeout);
 	CV_RegisterVar(&cv_masterserver_debug);
 	CV_RegisterVar(&cv_masterserver_token);
@@ -100,7 +103,6 @@ void AddMServCommands(void)
 #ifdef MASTERSERVER
 	COM_AddCommand("listserv", Command_Listserv_f, 0);
 	COM_AddCommand("masterserver_update", Update_parameters, COM_LUA); // allows people to updates manually in case you were delisted by accident
-#endif
 #endif
 }
 
@@ -111,17 +113,7 @@ static void WarnGUI (void)
 #ifdef HAVE_THREADS
 	I_lock_mutex(&m_menu_mutex);
 #endif
-
-#ifdef TOUCHINPUTS
-	if (inputmethod == INPUTMETHOD_TOUCH)
-	{
-		M_StartMessage(M_GetText("There was a problem connecting to\nthe Master Server\n\nCheck the console for details,\nor tap anywhere.\n"), NULL, MM_NOTHING);
-		M_TSNav_SetConsoleVisible(true);
-	}
-	else
-#endif
-		M_StartMessage(M_GetText("There was a problem connecting to\nthe Master Server\n\nCheck the console for details.\n"), NULL, MM_NOTHING);
-
+	M_StartMessage(M_GetText("There was a problem connecting to\nthe Master Server\n\nCheck the console for details.\n"), NULL, MM_NOTHING);
 #ifdef HAVE_THREADS
 	I_unlock_mutex(m_menu_mutex);
 #endif
@@ -200,7 +192,6 @@ void GetMODVersion_Console(void)
 }
 #endif
 
-#ifndef NONET
 /** Gets a list of game servers. Called from console.
   */
 static void Command_Listserv_f(void)
@@ -211,7 +202,6 @@ static void Command_Listserv_f(void)
 		HMS_list_servers();
 	}
 }
-#endif
 
 static void
 Finish_registration (void)
@@ -460,7 +450,7 @@ void UnregisterServer(void)
 static boolean
 Online (void)
 {
-	return ( serverrunning && ms_RoomId > 0 );
+	return ( serverrunning && cv_masterserver_room_id.value > 0 );
 }
 
 static inline void SendPingToMasterServer(void)
@@ -513,11 +503,20 @@ Set_api (const char *api)
 
 #endif/*MASTERSERVER*/
 
+static boolean ServerName_CanChange(const char* newvalue)
+{
+	if (strlen(newvalue) < MAXSERVERNAME)
+		return true;
+
+	CONS_Alert(CONS_NOTICE, "The server name must be shorter than %d characters\n", MAXSERVERNAME);
+	return false;
+}
+
 static void
 Update_parameters (void)
 {
 #ifdef MASTERSERVER
-	int registered;
+	int registered = 0;
 	int delayed;
 
 	if (Online())
@@ -539,6 +538,17 @@ Update_parameters (void)
 #endif/*MASTERSERVER*/
 }
 
+static void RoomId_OnChange(void)
+{
+	if (ms_RoomId != cv_masterserver_room_id.value)
+	{
+		UnregisterServer();
+		ms_RoomId = cv_masterserver_room_id.value;
+		if (Online())
+			RegisterServer();
+	}
+}
+
 static void MasterServer_OnChange(void)
 {
 #ifdef MASTERSERVER
@@ -555,7 +565,6 @@ static void MasterServer_OnChange(void)
 		CV_StealthSet(&cv_masterserver, cv_masterserver.defaultvalue);
 	}
 
-	/* the master server moved from mb.srb2.org to ds.ms.srb2.org; migrate stale configs */
 	if (
 			! cv_masterserver.changed &&
 			strcmp(cv_masterserver.string, "https://mb.srb2.org/MS/0") == 0

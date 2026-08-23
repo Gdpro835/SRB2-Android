@@ -1,6 +1,7 @@
 #include "../doomdef.h"
 #include "../doomtype.h"
 #include "../i_system.h"
+#include "../i_time.h"
 
 FILE *logstream = NULL;
 
@@ -14,13 +15,23 @@ size_t I_GetFreeMem(size_t *total)
 	return 0;
 }
 
-void I_Sleep(UINT32 ms){}
+void I_Sleep(UINT32 ms)
+{
+	(void)ms;
+}
 
-precise_t I_GetPreciseTime(void) {
+void I_SleepDuration(precise_t duration)
+{
+	(void)duration;
+}
+
+precise_t I_GetPreciseTime(void)
+{
 	return 0;
 }
 
-UINT64 I_GetPrecisePrecision(void) {
+UINT64 I_GetPrecisePrecision(void)
+{
 	return 1000000;
 }
 
@@ -68,14 +79,6 @@ void I_JoyScale2(void){}
 void I_InitJoystick(void){}
 
 void I_InitJoystick2(void){}
-
-void I_ChangeJoystick(void){}
-
-void I_ChangeJoystick2(void){}
-
-#ifdef TOUCHINPUTS
-void I_InitTouchScreen(void) {}
-#endif
 
 INT32 I_NumJoys(void)
 {
@@ -156,36 +159,6 @@ const char *I_LocateWad(void)
 	return NULL;
 }
 
-const char *I_InitialLocateWad(void)
-{
-	return NULL;
-}
-
-const char *I_AppStorageLocation(void)
-{
-	return NULL;
-}
-
-const char *I_SharedStorageLocation(void)
-{
-	return NULL;
-}
-
-const char *I_RemovableStorageLocation(void)
-{
-	return NULL;
-}
-
-INT32 I_StoragePermission(void)
-{
-	return 1;
-}
-
-INT32 I_SystemStoragePermission(void)
-{
-	return 1;
-}
-
 void I_GetJoystickEvents(void){}
 
 void I_GetJoystick2Events(void){}
@@ -218,37 +191,34 @@ const char *I_ClipboardPaste(void)
 	return NULL;
 }
 
-INT32 I_OnTabletDevice(void)
-{
-	return 0;
-}
-
-INT32 I_OnTVDevice(void)
-{
-	return 0;
-}
-
-INT32 I_OnAndroidTV(void)
-{
-	return 0;
-}
-
-INT32 I_OnAppleTV(void)
-{
-	return 0;
-}
-
 size_t I_GetRandomBytes(char *destination, size_t amount)
 {
+	(void)destination;
+	(void)amount;
 	return 0;
 }
 
-void I_RegisterSysCommands(void) {}
+void I_RegisterSysCommands(void){}
 
 void I_GetCursorPosition(INT32 *x, INT32 *y)
 {
 	(void)x;
 	(void)y;
+}
+
+const char *I_GetSysName(void)
+{
+	return NULL;
+}
+
+void I_SetTextInputMode(boolean active)
+{
+	(void)active;
+}
+
+boolean I_GetTextInputMode(void)
+{
+	return false;
 }
 
 #include "../sdl/dosstr.c"

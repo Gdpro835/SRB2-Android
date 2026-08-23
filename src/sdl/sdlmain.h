@@ -13,31 +13,23 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //-----------------------------------------------------------------------------
-/// \file sdlmain.h
+/// \file
 /// \brief System specific interface stuff.
 
 #ifndef __sdlmain__
 #define __sdlmain__
 
-#include "../m_fixed.h"
-
-extern SDL_Window *window;
-
 extern SDL_bool consolevent;
 extern SDL_bool framebuffer;
 
-#if defined(__ANDROID__)
-int Android_EventFilter(void *userdata, SDL_Event *event);
+#include "../m_fixed.h"
+
+// SDL2 stub macro
+#ifdef _MSC_VER
+#define SDL2STUB() CONS_Printf("SDL2: stubbed: %s:%d\n", __FUNCTION__, __LINE__)
+#else
+#define SDL2STUB() CONS_Printf("SDL2: stubbed: %s:%d\n", __func__, __LINE__)
 #endif
-
-void Impl_InitVideoSubSystem(void);
-void Impl_HandleVideoEvent(SDL_Event *evt);
-
-struct SDLSplashScreen
-{
-	SDL_bool displaying;
-	UINT32 *image;
-};
 
 // So m_menu knows whether to store cv_usejoystick value or string
 #define JOYSTICK_HOTPLUG
@@ -50,8 +42,6 @@ typedef struct SDLJoyInfo_s
 {
 	/// Joystick handle
 	SDL_Joystick *dev;
-	/// number of this joystick
-	int index;
 	/// number of old joystick
 	int oldjoy;
 	/// number of axies
@@ -64,23 +54,21 @@ typedef struct SDLJoyInfo_s
 	int hats;
 	/// number of balls
 	int balls;
+
 } SDLJoyInfo_t;
 
 /**	\brief SDL info about joystick 1
 */
 extern SDLJoyInfo_t JoyInfo;
 
-/**	\brief SDL info about joystick 2
+/**	\brief joystick axis deadzone
+*/
+#define SDL_JDEADZONE 153
+#undef SDL_JDEADZONE
+
+/**	\brief SDL inof about joystick 2
 */
 extern SDLJoyInfo_t JoyInfo2;
-
-/**	\brief TV remote joystick device
-*/
-extern SDL_Joystick *TVRemoteDevice;
-
-/**	\brief Accelerometer joystick device
-*/
-extern SDL_Joystick *AccelerometerDevice;
 
 // So we can call this from i_video event loop
 void I_ShutdownJoystick(void);
@@ -92,5 +80,8 @@ INT32 I_GetJoystickDeviceIndex(SDL_Joystick *dev);
 void I_GetConsoleEvents(void);
 
 void SDLforceUngrabMouse(void);
+
+// Needed for some WIN32 functions
+extern SDL_Window *window;
 
 #endif

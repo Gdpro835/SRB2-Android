@@ -1,7 +1,7 @@
 // SONIC ROBO BLAST 2
 //-----------------------------------------------------------------------------
 // Copyright (C) 1998-2000 by DooM Legacy Team.
-// Copyright (C) 1999-2023 by Sonic Team Junior.
+// Copyright (C) 1999-2024 by Sonic Team Junior.
 //
 // This program is free software distributed under the
 // terms of the GNU General Public License, version 2.
@@ -31,7 +31,7 @@
 char *FREE_STATES[NUMSTATEFREESLOTS];
 char *FREE_MOBJS[NUMMOBJFREESLOTS];
 char *FREE_SKINCOLORS[NUMCOLORFREESLOTS];
-UINT8 used_spr[(NUMSPRITEFREESLOTS / 8) + 1]; // Bitwise flag for sprite freeslot in use! I would use ceil() here if I could, but it only saves 1 byte of memory anyway.
+bitarray_t used_spr[BIT_ARRAY_SIZE(NUMSPRITEFREESLOTS)]; // Sprite freeslots in use
 
 const char NIGHTSGRADE_LIST[] = {
 	'F', // GRADE_F
@@ -219,6 +219,7 @@ actionpointer_t actionpointers[] =
 	{{A_ChangeColorRelative},    "A_CHANGECOLORRELATIVE"},
 	{{A_ChangeColorAbsolute},    "A_CHANGECOLORABSOLUTE"},
 	{{A_Dye},                    "A_DYE"},
+	{{A_SetTranslation},         "A_SETTRANSLATION"},
 	{{A_MoveRelative},           "A_MOVERELATIVE"},
 	{{A_MoveAbsolute},           "A_MOVEABSOLUTE"},
 	{{A_Thrust},                 "A_THRUST"},
@@ -1080,11 +1081,11 @@ const char *const STATE_LIST[] = { // array length left dynamic for sanity testi
 	"S_FANG_FIRE1",
 	"S_FANG_FIRE2",
 	"S_FANG_FIRE3",
-	"S_FANG_FIRE4",
 	"S_FANG_FIREREPEAT",
 	"S_FANG_LOBSHOT0",
 	"S_FANG_LOBSHOT1",
 	"S_FANG_LOBSHOT2",
+	"S_FANG_LOBSHOT3",
 	"S_FANG_WAIT1",
 	"S_FANG_WAIT2",
 	"S_FANG_WALLHIT",
@@ -1106,6 +1107,7 @@ const char *const STATE_LIST[] = { // array length left dynamic for sanity testi
 	"S_FANG_PINCHLOBSHOT2",
 	"S_FANG_PINCHLOBSHOT3",
 	"S_FANG_PINCHLOBSHOT4",
+	"S_FANG_PINCHLOBSHOT5",
 	"S_FANG_DIE1",
 	"S_FANG_DIE2",
 	"S_FANG_DIE3",
@@ -1933,6 +1935,13 @@ const char *const STATE_LIST[] = { // array length left dynamic for sanity testi
 	"S_SMALLGRABCHAIN",
 	"S_BIGGRABCHAIN",
 
+	// Blue spring on a ball
+	"S_BLUESPRINGBALL",
+	"S_BLUESPRINGBALL2",
+	"S_BLUESPRINGBALL3",
+	"S_BLUESPRINGBALL4",
+	"S_BLUESPRINGBALL5",
+
 	// Yellow spring on a ball
 	"S_YELLOWSPRINGBALL",
 	"S_YELLOWSPRINGBALL2",
@@ -2237,6 +2246,10 @@ const char *const STATE_LIST[] = { // array length left dynamic for sanity testi
 	"S_LAMPPOST2",  // with snow
 	"S_HANGSTAR",
 	"S_MISTLETOE",
+	"S_SSZTREE",
+	"S_SSZTREE_BRANCH",
+	"S_SSZTREE2",
+	"S_SSZTREE2_BRANCH",
 	// Xmas GFZ bushes
 	"S_XMASBLUEBERRYBUSH",
 	"S_XMASBERRYBUSH",
@@ -2244,11 +2257,9 @@ const char *const STATE_LIST[] = { // array length left dynamic for sanity testi
 	// FHZ
 	"S_FHZICE1",
 	"S_FHZICE2",
-	"S_ROSY_IDLE1",
-	"S_ROSY_IDLE2",
-	"S_ROSY_IDLE3",
-	"S_ROSY_IDLE4",
+	"S_ROSY_IDLE",
 	"S_ROSY_JUMP",
+	"S_ROSY_FALL",
 	"S_ROSY_WALK",
 	"S_ROSY_HUG",
 	"S_ROSY_PAIN",
@@ -2357,6 +2368,9 @@ const char *const STATE_LIST[] = { // array length left dynamic for sanity testi
 	"S_DBALL5",
 	"S_DBALL6",
 	"S_EGGSTATUE2",
+	"S_GINE",
+	"S_PPAL",
+	"S_PPEL",
 
 	// Shield Orb
 	"S_ARMA1",
@@ -3241,6 +3255,7 @@ const char *const STATE_LIST[] = { // array length left dynamic for sanity testi
 	"S_MARIOBUSH2",
 	"S_TOAD",
 
+
 	// Nights-specific stuff
 	"S_NIGHTSDRONE_MAN1",
 	"S_NIGHTSDRONE_MAN2",
@@ -3544,6 +3559,12 @@ const char *const STATE_LIST[] = { // array length left dynamic for sanity testi
 	"S_YELLOWBRICKDEBRIS",
 
 	"S_NAMECHECK",
+
+	// LJ Knuckles
+	"S_OLDK_STND",
+	"S_OLDK_DIE0",
+	"S_OLDK_DIE1",
+	"S_OLDK_DIE2",
 };
 
 // RegEx to generate this from info.h: ^\tMT_([^,]+), --> \t"MT_\1",
@@ -3891,6 +3912,7 @@ const char *const MOBJTYPE_LIST[] = {  // array length left dynamic for sanity t
 	"MT_BIGMACE", // Big Mace
 	"MT_SMALLGRABCHAIN", // Small Grab Chain
 	"MT_BIGGRABCHAIN", // Big Grab Chain
+	"MT_BLUESPRINGBALL", // Blue spring on a ball
 	"MT_YELLOWSPRINGBALL", // Yellow spring on a ball
 	"MT_REDSPRINGBALL", // Red spring on a ball
 	"MT_SMALLFIREBAR", // Small Firebar
@@ -4014,6 +4036,10 @@ const char *const MOBJTYPE_LIST[] = {  // array length left dynamic for sanity t
 	"MT_LAMPPOST2",  // with snow
 	"MT_HANGSTAR",
 	"MT_MISTLETOE",
+	"MT_SSZTREE",
+	"MT_SSZTREE_BRANCH",
+	"MT_SSZTREE2",
+	"MT_SSZTREE2_BRANCH",
 	// Xmas GFZ bushes
 	"MT_XMASBLUEBERRYBUSH",
 	"MT_XMASBERRYBUSH",
@@ -4093,6 +4119,9 @@ const char *const MOBJTYPE_LIST[] = {  // array length left dynamic for sanity t
 	// Misc scenery
 	"MT_DBALL",
 	"MT_EGGSTATUE2",
+	"MT_GINE",
+	"MT_PPAL",
+	"MT_PPEL",
 
 	// Powerup Indicators
 	"MT_ELEMENTAL_ORB", // Elemental shield mobj
@@ -4283,7 +4312,7 @@ const char *const MOBJTYPE_LIST[] = {  // array length left dynamic for sanity t
 	"MT_POLYANCHOR",
 	"MT_POLYSPAWN",
 
-	// Skybox objects
+	// Portal objects
 	"MT_SKYBOX",
 
 	// Debris
@@ -4320,6 +4349,8 @@ const char *const MOBJTYPE_LIST[] = {  // array length left dynamic for sanity t
 
 	"MT_NAMECHECK",
 	"MT_RAY",
+
+	"MT_OLDK",
 };
 
 const char *const MOBJFLAG_LIST[] = {
@@ -4473,6 +4504,8 @@ const char *const PLAYERFLAG_LIST[] = {
 	"FORCESTRAFE", // Translate turn inputs into strafe inputs
 	"CANCARRY", // Can carry?
 	"FINISHED",
+
+	"SHIELDDOWN", // Shield has been pressed.
 
 	NULL // stop loop here.
 };
@@ -4825,7 +4858,7 @@ const char *const POWERS_LIST[] = {
 
 const char *const HUDITEMS_LIST[] = {
 	"LIVES",
-	"LIVESALT",
+	"INPUT",
 
 	"RINGS",
 	"RINGSNUM",
@@ -4884,7 +4917,7 @@ const char *const MENUTYPES_LIST[] = {
 	"MP_SERVER",
 	"MP_CONNECT",
 	"MP_ROOM",
-	"MP_PLAYERSETUP", // MP_PlayerSetupDef shared with SPLITSCREEN if #defined NONET
+	"MP_PLAYERSETUP",
 	"MP_SERVER_OPTIONS",
 
 	// Options
@@ -5087,6 +5120,10 @@ struct int_const_s const INT_CONST[] = {
 	{"RF_SHADOWEFFECTS",RF_SHADOWEFFECTS},
 	{"RF_DROPSHADOW",RF_DROPSHADOW},
 
+	// Animation flags
+	{"SPR2F_MASK",SPR2F_MASK},
+	{"SPR2F_SUPER",SPR2F_SUPER},
+
 	// Level flags
 	{"LF_SCRIPTISFILE",LF_SCRIPTISFILE},
 	{"LF_SPEEDMUSIC",LF_SPEEDMUSIC},
@@ -5221,6 +5258,7 @@ struct int_const_s const INT_CONST[] = {
 	{"SF_MARIODAMAGE",SF_MARIODAMAGE},
 	{"SF_MACHINE",SF_MACHINE},
 	{"SF_DASHMODE",SF_DASHMODE},
+	{"SF_FASTWAIT",SF_FASTWAIT},
 	{"SF_FASTEDGE",SF_FASTEDGE},
 	{"SF_MULTIABILITY",SF_MULTIABILITY},
 	{"SF_NONIGHTSROTATION",SF_NONIGHTSROTATION},
@@ -5603,7 +5641,6 @@ struct int_const_s const INT_CONST[] = {
 	{"CV_HIDDEN",CV_HIDEN},
 	{"CV_CHEAT",CV_CHEAT},
 	{"CV_ALLOWLUA",CV_ALLOWLUA},
-	{"CV_SLIDER_SAFE",CV_SLIDER_SAFE},
 
 	// v_video flags
 	{"V_NOSCALEPATCH",V_NOSCALEPATCH},
@@ -5791,6 +5828,10 @@ struct int_const_s const INT_CONST[] = {
 	{"MB_BUTTON8",MB_BUTTON8},
 	{"MB_SCROLLUP",MB_SCROLLUP},
 	{"MB_SCROLLDOWN",MB_SCROLLDOWN},
+
+	// screen.h constants
+	{"BASEVIDWIDTH",BASEVIDWIDTH},
+	{"BASEVIDHEIGHT",BASEVIDHEIGHT},
 
 	{NULL,0}
 };

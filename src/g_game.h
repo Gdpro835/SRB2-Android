@@ -2,7 +2,7 @@
 //-----------------------------------------------------------------------------
 // Copyright (C) 1993-1996 by id Software, Inc.
 // Copyright (C) 1998-2000 by DooM Legacy Team.
-// Copyright (C) 1999-2023 by Sonic Team Junior.
+// Copyright (C) 1999-2024 by Sonic Team Junior.
 //
 // This program is free software distributed under the
 // terms of the GNU General Public License, version 2.
@@ -42,13 +42,10 @@ extern INT32 gameovertics;
 extern UINT8 ammoremovaltics;
 extern tic_t timeinmap; // Ticker for time spent in level (used for levelcard display)
 extern INT16 rw_maximums[NUM_WEAPONS];
-
-extern INT32 camtoggledelay, camtoggledelay2;
 extern INT32 pausedelay;
 extern boolean pausebreakkey;
 
 extern boolean promptactive;
-extern boolean promptblockcontrols;
 
 extern consvar_t cv_pauseifunfocused;
 
@@ -56,7 +53,7 @@ extern consvar_t cv_instantretry;
 
 // used in game menu
 extern consvar_t cv_tutorialprompt;
-extern consvar_t cv_chatwidth, cv_chatnotifications, cv_chatheight, cv_chattime, cv_consolechat, cv_chatbacktint, cv_chatspamprotection, cv_compactscoreboard;
+extern consvar_t cv_chatwidth, cv_chatnotifications, cv_chatheight, cv_chattime, cv_consolechat, cv_chatbacktint, cv_chatspamprotection, cv_chatspamspeed, cv_chatspamburst, cv_compactscoreboard;
 extern consvar_t cv_crosshair, cv_crosshair2;
 extern consvar_t cv_invertmouse, cv_alwaysfreelook, cv_chasefreelook, cv_mousemove;
 extern consvar_t cv_invertmouse2, cv_alwaysfreelook2, cv_chasefreelook2, cv_mousemove2;
@@ -179,23 +176,20 @@ void G_SpawnPlayer(INT32 playernum);
 
 // Can be called by the startup code or M_Responder.
 // A normal game starts at map 1, but a warp test can start elsewhere
-void G_DeferedInitNew(boolean pultmode, const char *mapname, INT32 pickedchar,
-	boolean SSSG, boolean FLS);
+void G_DeferedInitNew(boolean pultmode, const char *mapname, INT32 character, boolean SSSG, boolean FLS);
 void G_DoLoadLevel(boolean resetplayer);
 void G_StartTitleCard(void);
 void G_PreLevelTitleCard(void);
 boolean G_IsTitleCardAvailable(void);
 
-// Can be called by the startup code or M_Responder, calls P_LoadLevel.
+// Can be called by the startup code or M_Responder, calls P_SetupLevel.
 void G_LoadGame(UINT32 slot, INT16 mapoverride);
 
-void G_SaveGame(UINT32 slot, INT16 mapnum);
-void G_SaveGameOver(UINT32 slot, boolean modifylives);
 void G_SaveGameData(gamedata_t *data);
 
-size_t G_ReadSaveGameSlot(char *savename, UINT8 **buffer, UINT32 slot);
+void G_SaveGame(UINT32 slot, INT16 mapnum);
 
-char *G_LiveEventHasBackup(void);
+void G_SaveGameOver(UINT32 slot, boolean modifylives);
 
 extern UINT32 gametypedefaultrules[NUMGAMETYPES];
 extern UINT32 gametypetol[NUMGAMETYPES];
@@ -222,6 +216,7 @@ boolean G_CoopGametype(void);
 boolean G_TagGametype(void);
 boolean G_CompetitionGametype(void);
 boolean G_EnoughPlayersFinished(void);
+INT16 G_GetNextMap(boolean ignoretokens, boolean silent);
 void G_ExitLevel(void);
 void G_NextLevel(void);
 void G_Continue(void);
@@ -232,9 +227,6 @@ void G_EndGame(void); // moved from y_inter.c/h and renamed
 void G_Ticker(boolean run);
 boolean G_Responder(event_t *ev);
 boolean G_LuaResponder(event_t *ev);
-
-boolean G_CanViewpointSwitch(boolean luahook);
-boolean G_CanViewpointSwitchToPlayer(player_t *player);
 
 void G_AddPlayer(INT32 playernum);
 

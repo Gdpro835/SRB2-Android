@@ -2,7 +2,7 @@
 //-----------------------------------------------------------------------------
 // Copyright (C) 1993-1996 by id Software, Inc.
 // Copyright (C) 1998-2000 by DooM Legacy Team.
-// Copyright (C) 1999-2023 by Sonic Team Junior.
+// Copyright (C) 1999-2024 by Sonic Team Junior.
 //
 // This program is free software distributed under the
 // terms of the GNU General Public License, version 2.
@@ -40,10 +40,6 @@ extern rendermode_t rendermode;
 */
 extern rendermode_t chosenrendermode;
 
-/**	\brief use highcolor modes if true
-*/
-extern boolean highcolor;
-
 /**	\brief setup video mode
 */
 void I_StartupGraphics(void);
@@ -73,6 +69,7 @@ INT32 VID_NumModes(void);
 */
 INT32 VID_GetModeForSize(INT32 w, INT32 h);
 
+
 /**	\brief	The VID_SetMode function
 
 	Set the video mode right now,
@@ -80,28 +77,25 @@ INT32 VID_GetModeForSize(INT32 w, INT32 h);
 	by setting the setmodeneeded to a value >0
 	setup a video mode, this is to be called from the menu
 
+
 	\param	modenum	video mode to set to
 
 	\return	current video mode
 */
 INT32 VID_SetMode(INT32 modenum);
 
-/**	\brief Returns the device's native resolution
-*/
-void VID_GetNativeResolution(INT32 *width, INT32 *height);
-
 /**	\brief Checks the render state
-	\return	1 if the renderer changed, 0 if it did not
+	\return	true if the renderer changed
 */
-INT32 VID_CheckRenderer(void);
+boolean VID_CheckRenderer(void);
 
-/**	\brief Checks if OpenGL successfully loaded
+/**	\brief Load OpenGL mode
+*/
+void VID_StartupOpenGL(void);
+
+/**	\brief Checks if OpenGL loaded
 */
 void VID_CheckGLLoaded(rendermode_t oldrender);
-
-/**	\brief Displays an error if OpenGL failed to load
-*/
-void VID_DisplayGLError(void);
 
 /**	\brief	The VID_GetModeName function
 
@@ -110,8 +104,8 @@ void VID_DisplayGLError(void);
 	\return	name of video mode
 */
 const char *VID_GetModeName(INT32 modenum);
-void VID_PrepareModeList(void); /// note hack for SDL
 
+void VID_PrepareModeList(void);
 
 /**	\brief can video system do fullscreen
 */
@@ -128,10 +122,6 @@ void I_FinishUpdate(void);
 /**	\brief I_FinishUpdate(), but vsync disabled
 */
 void I_UpdateNoVsync(void);
-
-/**	\brief Returns 1 if the app is on the background, and is not supposed to render.
-*/
-INT32 I_AppOnBackground(void);
 
 /**	\brief	Wait for vertical retrace or pause a bit.
 
@@ -156,18 +146,6 @@ void I_BeginRead(void);
 /**	\brief Stop disk icon
 */
 void I_EndRead(void);
-
-/**	\brief Show the splash screen
-*/
-void I_ShowSplashScreen(void);
-
-/**	\brief Hide the splash screen
-*/
-void I_HideSplashScreen(void);
-
-/**	\brief Report visual progress for some long operation
-*/
-void I_ReportProgress(int progress);
 
 UINT32 I_GetRefreshRate(void);
 

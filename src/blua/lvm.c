@@ -134,7 +134,7 @@ void luaV_gettable (lua_State *L, TValue *t, TValue *key, StkId val) {
 void luaV_settable (lua_State *L, TValue *t, TValue *key, StkId val) {
   int loop;
   for (loop = 0; loop < MAXTAGLOOP; loop++) {
-    TValue *tm;
+    TValue *tm = NULL;
     if (ttistable(t)) {  /* `t' is a table? */
       Table *h = hvalue(t);
       TValue *oldval = luaH_set(L, h, key); /* do a primitive set */
@@ -203,11 +203,7 @@ static int l_strcmp (const TString *ls, const TString *rs) {
   const char *r = getstr(rs);
   size_t lr = rs->tsv.len;
   for (;;) {
-#ifdef LUA_NOLOCALE
-    int temp = strcmp(l, r);
-#else
     int temp = strcoll(l, r);
-#endif
     if (temp != 0) return temp;
     else {  /* strings are equal up to a `\0' */
       size_t len = strlen(l);  /* index of first `\0' in both strings */

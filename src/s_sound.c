@@ -2,7 +2,7 @@
 //-----------------------------------------------------------------------------
 // Copyright (C) 1993-1996 by id Software, Inc.
 // Copyright (C) 1998-2000 by DooM Legacy Team.
-// Copyright (C) 1999-2023 by Sonic Team Junior.
+// Copyright (C) 1999-2024 by Sonic Team Junior.
 //
 // This program is free software distributed under the
 // terms of the GNU General Public License, version 2.
@@ -74,9 +74,9 @@ consvar_t stereoreverse = CVAR_INIT ("stereoreverse", "Off", CV_SAVE, CV_OnOff, 
 static consvar_t precachesound = CVAR_INIT ("precachesound", "Off", CV_SAVE, CV_OnOff, NULL);
 
 // actual general (maximum) sound & music volume, saved into the config
-consvar_t cv_soundvolume = CVAR_INIT ("soundvolume", "16", CV_SAVE | CV_SLIDER_SAFE, soundvolume_cons_t, NULL);
-consvar_t cv_digmusicvolume = CVAR_INIT ("digmusicvolume", "16", CV_SAVE | CV_SLIDER_SAFE, soundvolume_cons_t, NULL);
-consvar_t cv_midimusicvolume = CVAR_INIT ("midimusicvolume", "16", CV_SAVE | CV_SLIDER_SAFE, soundvolume_cons_t, NULL);
+consvar_t cv_soundvolume = CVAR_INIT ("soundvolume", "16", CV_SAVE, soundvolume_cons_t, NULL);
+consvar_t cv_digmusicvolume = CVAR_INIT ("digmusicvolume", "16", CV_SAVE, soundvolume_cons_t, NULL);
+consvar_t cv_midimusicvolume = CVAR_INIT ("midimusicvolume", "16", CV_SAVE, soundvolume_cons_t, NULL);
 
 static void Captioning_OnChange(void)
 {
@@ -513,7 +513,7 @@ void S_StartCaption(sfxenum_t sfx_id, INT32 cnum, UINT16 lifespan)
 	closedcaptions[set].c = ((cnum == -1) ? NULL : &channels[cnum]);
 	closedcaptions[set].s = sfx;
 	closedcaptions[set].t = lifespan;
-	closedcaptions[set].b = 2; // bob
+	closedcaptions[set].b = 3; // bob
 }
 
 void S_StartSoundAtVolume(const void *origin_p, sfxenum_t sfx_id, INT32 volume)
@@ -1910,7 +1910,7 @@ static void S_AddMusicStackEntry(const char *mname, UINT16 mflags, boolean loopi
 	if (!music_stacks)
 	{
 		music_stacks = Z_Calloc(sizeof (*mst), PU_MUSIC, NULL);
-		strncpy(music_stacks->musname, (status == JT_MASTER ? mname : (S_CheckQueue() ? queue_name : mapmusname)), 7);
+		strncpy(music_stacks->musname, (status == JT_MASTER ? mname : (S_CheckQueue() ? queue_name : mapmusname)), sizeof(music_stacks->musname)-1);
 		music_stacks->musflags = (status == JT_MASTER ? mflags : (S_CheckQueue() ? queue_flags : mapmusflags));
 		music_stacks->looping = (status == JT_MASTER ? looping : (S_CheckQueue() ? queue_looping : true));
 		music_stacks->position = (status == JT_MASTER ? position : (S_CheckQueue() ? queue_position : S_GetMusicPosition()));
@@ -2033,7 +2033,7 @@ boolean S_RecallMusic(UINT16 status, boolean fromfirst)
 	if (result)
 	{
 		*entry = *result;
-		strncpy(entry->musname, result->musname, 7);
+		memcpy(entry->musname, result->musname, sizeof(entry->musname));
 	}
 
 	// no result, just grab mapmusname
@@ -2255,10 +2255,10 @@ void S_ChangeMusicEx(const char *mmusic, UINT16 mflags, boolean looping, UINT32 
 	if (S_MusicDisabled())
 		return;
 
-	strncpy(newmusic, mmusic, 7);
+	strncpy(newmusic, mmusic, sizeof(newmusic)-1);
+	newmusic[6] = 0;
 	if (LUA_HookMusicChange(music_name, &hook_param))
 		return;
-	newmusic[6] = 0;
 
 	// No Music (empty string)
 	if (newmusic[0] == 0)
@@ -2494,11 +2494,11 @@ static void Command_Tunes_f(void)
 		track = (UINT16)atoi(COM_Argv(2))-1;
 
 	strncpy(mapmusname, tunearg, 7);
+	mapmusname[6] = 0;
 
 	if (argc > 4)
 		position = (UINT32)atoi(COM_Argv(4));
 
-	mapmusname[6] = 0;
 	mapmusflags = (track & MUSIC_TRACKMASK);
 	mapmusposition = position;
 

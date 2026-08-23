@@ -2,7 +2,7 @@
 //-----------------------------------------------------------------------------
 // Copyright (C) 1993-1996 by id Software, Inc.
 // Copyright (C) 1998-2000 by DooM Legacy Team.
-// Copyright (C) 1999-2023 by Sonic Team Junior.
+// Copyright (C) 1999-2024 by Sonic Team Junior.
 //
 // This program is free software distributed under the
 // terms of the GNU General Public License, version 2.
@@ -39,13 +39,6 @@ void M_StartMovie(void);
 void M_SaveFrame(void);
 void M_StopMovie(void);
 
-#ifdef HAVE_GLES
-#define SCREENSHOT_USE_RGBA
-#define SCREENSHOT_BITS 4
-#else
-#define SCREENSHOT_BITS 3
-#endif
-
 // the file where game vars and settings are saved
 #define CONFIGFILENAME "config.cfg"
 
@@ -65,8 +58,6 @@ boolean FIL_FileOK(char const *name);
 void FIL_DefaultExtension (char *path, const char *extension);
 void FIL_ForceExtension(char *path, const char *extension);
 boolean FIL_CheckExtension(const char *in);
-
-char *M_FindFile(const char *filename);
 
 #ifdef HAVE_PNG
 boolean M_SavePNG(const char *filename, void *data, int width, int height, const UINT8 *palette);
@@ -118,8 +109,17 @@ const char * M_Ftrim (double);
 // Returns true if the string is empty.
 boolean M_IsStringEmpty(const char *s);
 
+// Converts a string containing a whole number into an int. Returns false if the conversion failed.
+boolean M_StringToNumber(const char *input, int *out);
+
+// Converts a string containing a number into a double. Returns false if the conversion failed.
+boolean M_StringToDecimal(const char *input, double *out);
+
 // counting bits, for weapon ammo code, usually
 FUNCMATH UINT8 M_CountBits(UINT32 num, UINT8 size);
+
+// Rounds off floating numbers and checks for 0 - 255 bounds
+int M_RoundUp(double number);
 
 #include "w_wad.h"
 extern char configfile[MAX_WADPATH];

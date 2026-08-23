@@ -196,8 +196,7 @@ void F_WipeStageTitle(void)
 	&& G_IsTitleCardAvailable())
 	{
 		ST_runTitleCard();
-		if (!I_AppOnBackground())
-			ST_drawWipeTitleCard();
+		ST_drawWipeTitleCard();
 	}
 }
 
@@ -563,13 +562,6 @@ void F_RunWipe(UINT8 wipetype, boolean drawMenu)
 		}
 		lastwipetic = nowtime;
 
-		if (I_AppOnBackground())
-		{
-			if (wipestyle == WIPESTYLE_COLORMAP)
-				F_WipeStageTitle();
-			goto skipframe;
-		}
-
 		// Wipe styles
 		if (wipestyle == WIPESTYLE_COLORMAP)
 		{
@@ -577,7 +569,7 @@ void F_RunWipe(UINT8 wipetype, boolean drawMenu)
 			if (rendermode == render_opengl)
 			{
 				// send in the wipe type and wipe frame because we need to cache the graphic
-				HWR_DoTintedWipe(wipetype, wipeframe-1);
+				HWR_DoWipe(wipetype, wipeframe-1);
 			}
 			else
 #endif
@@ -605,8 +597,9 @@ void F_RunWipe(UINT8 wipetype, boolean drawMenu)
 		}
 
 		I_OsPolling();
+		I_UpdateNoBlit();
 
-		if (drawMenu && !I_AppOnBackground())
+		if (drawMenu)
 		{
 #ifdef HAVE_THREADS
 			I_lock_mutex(&m_menu_mutex);
@@ -619,7 +612,6 @@ void F_RunWipe(UINT8 wipetype, boolean drawMenu)
 
 		I_FinishUpdate(); // page flip or blit buffer
 
-skipframe:
 		if (moviemode)
 			M_SaveFrame();
 
