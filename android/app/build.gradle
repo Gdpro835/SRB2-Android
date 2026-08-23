@@ -20,7 +20,7 @@ android {
         versionName "2.2.15"
         externalNativeBuild {
             ndkBuild {
-                arguments "APP_PLATFORM=android-16"
+                arguments "APP_PLATFORM=android-16", "V=1", "-k"
                 abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
             }
         }
@@ -74,14 +74,14 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             externalNativeBuild {
                 ndkBuild {
-                    arguments "BUILD_TYPE=release"
+                    arguments "BUILD_TYPE=release", "V=1", "-k"
                 }
             }
         }
         debug {
             externalNativeBuild {
                 ndkBuild {
-                    arguments "BUILD_TYPE=debug"
+                    arguments "BUILD_TYPE=debug", "V=1", "-k"
                 }
             }
         }
@@ -106,6 +106,15 @@ android {
         abortOnError false
     }
     preBuild.dependsOn generateCompTime
+
+    // Make ndkBuild verbose and don't fail fast
+    tasks.whenTaskAdded { task ->
+        if (task.name.contains("externalNative") || task.name.contains("ndkBuild")) {
+            task.doFirst {
+                println("Running ${task.name} with verbose")
+            }
+        }
+    }
 
     if (!project.hasProperty('EXCLUDE_NATIVE_LIBS')) {
         sourceSets.main {
