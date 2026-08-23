@@ -103,6 +103,7 @@ void AddMServCommands(void)
 	CV_RegisterVar(&cv_masterserver_timeout);
 	CV_RegisterVar(&cv_masterserver_debug);
 	CV_RegisterVar(&cv_masterserver_token);
+	CV_RegisterVar(&cv_masterserver_insecure);
 	CV_RegisterVar(&cv_servername);
 #ifdef MASTERSERVER
 	COM_AddCommand("listserv", Command_Listserv_f, 0);

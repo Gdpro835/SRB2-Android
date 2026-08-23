@@ -65,6 +65,16 @@ consvar_t cv_masterserver_token = CVAR_INIT
 		NULL
 );
 
+/* The libcurl shipped with the Android port is built without verbose strings,
+   so curl_easy_strerror only ever says "Error". Turning this on skips
+   certificate validation, which tells us whether a failure is a certificate
+   problem or something else entirely. It is a diagnostic, not a fix. */
+consvar_t cv_masterserver_insecure = CVAR_INIT
+(
+		"masterserver_insecure", "Off", CV_SAVE, CV_OnOff,
+		NULL
+);
+
 #ifdef MASTERSERVER
 
 static int hms_started;
@@ -200,7 +210,13 @@ HMS_unpack_ca_bundle (void)
 	saved_ca = File_Open(hms_cert_path, "rb", FILEHANDLE_SDL);
 
 	if (! saved_ca)
+	{
+		CONS_Alert(CONS_WARNING, "HMS: the saved CA bundle cannot be reopened\n");
 		return false;
+	}
+
+	File_Seek(saved_ca, 0, SEEK_END);
+	CONS_Printf("HMS: CA bundle is %ld bytes\n", (long)File_Tell(saved_ca));
 
 	File_Close(saved_ca);
 
@@ -243,6 +259,39 @@ HMS_set_cert (CURL *curl)
 
 #endif
 
+/* libcurl may have been built with CURL_DISABLE_VERBOSE_STRINGS, in which case
+   curl_easy_strerror() returns "Error" for everything and CURLOPT_VERBOSE
+   prints nothing. Spell out the codes we are likely to run into ourselves. */
+static const char *
+HMS_explain_curl_code (CURLcode cc)
+{
+	switch (cc)
+	{
+		case CURLE_UNSUPPORTED_PROTOCOL:
+			return "unsupported protocol - this build of libcurl may lack HTTPS support";
+		case CURLE_COULDNT_RESOLVE_HOST:
+			return "could not resolve the host name";
+		case CURLE_COULDNT_CONNECT:
+			return "could not connect to the server";
+		case CURLE_OPERATION_TIMEDOUT:
+			return "the request timed out";
+		case CURLE_SSL_CONNECT_ERROR:
+			return "the TLS handshake failed";
+		case CURLE_PEER_FAILED_VERIFICATION:
+			return "the server certificate could not be verified";
+		case CURLE_SSL_CACERT_BADFILE:
+			return "the CA certificate bundle could not be read";
+		case CURLE_GOT_NOTHING:
+			return "the server closed the connection without answering";
+		case CURLE_SEND_ERROR:
+			return "sending the request failed";
+		case CURLE_RECV_ERROR:
+			return "receiving the answer failed";
+		default:
+			return "see the libcurl documentation for this code";
+	}
+}
+
 FUNCDEBUG static struct HMS_buffer *
 HMS_connect (int proto, const char *format, ...)
 {
@@ -272,6 +321,9 @@ HMS_connect (int proto, const char *format, ...)
 		{
 			atexit(curl_global_cleanup);
 			hms_started = 1;
+
+			/* Which TLS backend we ended up with matters a lot here, so say it. */
+			CONS_Printf("HMS: using %s\n", curl_version());
 		}
 	}
 
@@ -357,6 +409,14 @@ HMS_connect (int proto, const char *format, ...)
 	HMS_set_cert(curl);
 #endif
 
+	if (cv_masterserver_insecure.value)
+	{
+		CONS_Alert(CONS_WARNING,
+				"HMS: masterserver_insecure is on, the server certificate is NOT checked\n");
+		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+	}
+
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, hms_useragent);
 
 	curl_free(quack_token);
@@ -377,10 +437,23 @@ HMS_do (struct HMS_buffer *buffer)
 
 	if (cc != CURLE_OK)
 	{
+		long oserrno = 0;
+		long verifyresult = 0;
+
+		curl_easy_getinfo(buffer->curl, CURLINFO_OS_ERRNO, &oserrno);
+		curl_easy_getinfo(buffer->curl, CURLINFO_SSL_VERIFYRESULT, &verifyresult);
+
 		Contact_error();
 		Blame(
-				"From curl_easy_perform: %s\n",
-				curl_easy_strerror(cc)
+				"From curl_easy_perform: %s (curl code %d: %s)\n",
+				curl_easy_strerror(cc),
+				(int)cc,
+				HMS_explain_curl_code(cc)
+		);
+		Blame(
+				"System error %ld, certificate check result %ld.\n",
+				oserrno,
+				verifyresult
 		);
 		return 0;
 	}
