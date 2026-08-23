@@ -7192,19 +7192,19 @@ static void P_ForceCharacter(const char *forcecharskin)
 		if (splitscreen)
 		{
 			SetPlayerSkin(secondarydisplayplayer, forcecharskin);
-			if ((unsigned)cv_playercolor2.value != skins[players[secondarydisplayplayer].skin].prefcolor)
+			if ((unsigned)cv_playercolor2.value != skins[players[secondarydisplayplayer].skin]->prefcolor)
 			{
-				CV_StealthSetValue(&cv_playercolor2, skins[players[secondarydisplayplayer].skin].prefcolor);
-				players[secondarydisplayplayer].skincolor = skins[players[secondarydisplayplayer].skin].prefcolor;
+				CV_StealthSetValue(&cv_playercolor2, skins[players[secondarydisplayplayer].skin]->prefcolor);
+				players[secondarydisplayplayer].skincolor = skins[players[secondarydisplayplayer].skin]->prefcolor;
 			}
 		}
 
 		SetPlayerSkin(consoleplayer, forcecharskin);
 		// normal player colors in single player
-		if ((unsigned)cv_playercolor.value != skins[players[consoleplayer].skin].prefcolor)
+		if ((unsigned)cv_playercolor.value != skins[players[consoleplayer].skin]->prefcolor)
 		{
-			CV_StealthSetValue(&cv_playercolor, skins[players[consoleplayer].skin].prefcolor);
-			players[consoleplayer].skincolor = skins[players[consoleplayer].skin].prefcolor;
+			CV_StealthSetValue(&cv_playercolor, skins[players[consoleplayer].skin]->prefcolor);
+			players[consoleplayer].skincolor = skins[players[consoleplayer].skin]->prefcolor;
 		}
 	}
 }
@@ -7248,8 +7248,8 @@ static void P_LoadRecordGhosts(void)
 			if (cv_ghost_bestscore.value == 1 && players[consoleplayer].skin != i)
 				continue;
 
-			if (FIL_FileExists(va("%s-%s-score-best.lmp", gpath, skins[i].name)))
-				G_AddGhost(va("%s-%s-score-best.lmp", gpath, skins[i].name));
+			if (FIL_FileExists(va("%s-%s-score-best.lmp", gpath, skins[i]->name)))
+				G_AddGhost(va("%s-%s-score-best.lmp", gpath, skins[i]->name));
 		}
 	}
 
@@ -7261,8 +7261,8 @@ static void P_LoadRecordGhosts(void)
 			if (cv_ghost_besttime.value == 1 && players[consoleplayer].skin != i)
 				continue;
 
-			if (FIL_FileExists(va("%s-%s-time-best.lmp", gpath, skins[i].name)))
-				G_AddGhost(va("%s-%s-time-best.lmp", gpath, skins[i].name));
+			if (FIL_FileExists(va("%s-%s-time-best.lmp", gpath, skins[i]->name)))
+				G_AddGhost(va("%s-%s-time-best.lmp", gpath, skins[i]->name));
 		}
 	}
 
@@ -7274,8 +7274,8 @@ static void P_LoadRecordGhosts(void)
 			if (cv_ghost_bestrings.value == 1 && players[consoleplayer].skin != i)
 				continue;
 
-			if (FIL_FileExists(va("%s-%s-rings-best.lmp", gpath, skins[i].name)))
-				G_AddGhost(va("%s-%s-rings-best.lmp", gpath, skins[i].name));
+			if (FIL_FileExists(va("%s-%s-rings-best.lmp", gpath, skins[i]->name)))
+				G_AddGhost(va("%s-%s-rings-best.lmp", gpath, skins[i]->name));
 		}
 	}
 
@@ -7287,8 +7287,8 @@ static void P_LoadRecordGhosts(void)
 			if (cv_ghost_last.value == 1 && players[consoleplayer].skin != i)
 				continue;
 
-			if (FIL_FileExists(va("%s-%s-last.lmp", gpath, skins[i].name)))
-				G_AddGhost(va("%s-%s-last.lmp", gpath, skins[i].name));
+			if (FIL_FileExists(va("%s-%s-last.lmp", gpath, skins[i]->name)))
+				G_AddGhost(va("%s-%s-last.lmp", gpath, skins[i]->name));
 		}
 	}
 
@@ -7318,8 +7318,8 @@ static void P_LoadNightsGhosts(void)
 			if (cv_ghost_bestscore.value == 1 && players[consoleplayer].skin != i)
 				continue;
 
-			if (FIL_FileExists(va("%s-%s-score-best.lmp", gpath, skins[i].name)))
-				G_AddGhost(va("%s-%s-score-best.lmp", gpath, skins[i].name));
+			if (FIL_FileExists(va("%s-%s-score-best.lmp", gpath, skins[i]->name)))
+				G_AddGhost(va("%s-%s-score-best.lmp", gpath, skins[i]->name));
 		}
 	}
 
@@ -7331,8 +7331,8 @@ static void P_LoadNightsGhosts(void)
 			if (cv_ghost_besttime.value == 1 && players[consoleplayer].skin != i)
 				continue;
 
-			if (FIL_FileExists(va("%s-%s-time-best.lmp", gpath, skins[i].name)))
-				G_AddGhost(va("%s-%s-time-best.lmp", gpath, skins[i].name));
+			if (FIL_FileExists(va("%s-%s-time-best.lmp", gpath, skins[i]->name)))
+				G_AddGhost(va("%s-%s-time-best.lmp", gpath, skins[i]->name));
 		}
 	}
 
@@ -7344,8 +7344,8 @@ static void P_LoadNightsGhosts(void)
 			if (cv_ghost_last.value == 1 && players[consoleplayer].skin != i)
 				continue;
 
-			if (FIL_FileExists(va("%s-%s-last.lmp", gpath, skins[i].name)))
-				G_AddGhost(va("%s-%s-last.lmp", gpath, skins[i].name));
+			if (FIL_FileExists(va("%s-%s-last.lmp", gpath, skins[i]->name)))
+				G_AddGhost(va("%s-%s-last.lmp", gpath, skins[i]->name));
 		}
 	}
 

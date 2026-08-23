@@ -73,7 +73,7 @@ struct sfxinfo_struct
 	// length of sound data
 	size_t length;
 
-	// sound that can be remapped for a skin, indexes skins[].skinsounds
+	// sound that can be remapped for a skin, indexes skins[]->skinsounds
 	// 0 up to (NUMSKINSOUNDS-1), -1 = not skin specifc
 	INT32 skinsound;
 

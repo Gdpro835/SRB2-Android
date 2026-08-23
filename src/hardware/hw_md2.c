@@ -488,9 +488,9 @@ static void ReadModelDefs(char *data, size_t size)
 
 addskinmodel:
 		// Add player model
-		for (s = 0; s < MAXSKINS; s++)
+		for (s = 0; s < numskins; s++)
 		{
-			if (stricmp(skinname, skins[s].name) == 0)
+			if (stricmp(skinname, skins[s]->name) == 0)
 			{
 				md2_playermodels[s].skin = s;
 				md2_playermodels[s].scale = scale;
@@ -1312,8 +1312,8 @@ boolean HWR_DrawModel(gl_vissprite_t *spr)
 		// 2. draw model with correct position, rotation,...
 		if (spr->mobj->skin && spr->mobj->sprite == SPR_PLAY) // Use the player MD2 list if the mobj has a skin and is using the player sprites
 		{
-			md2 = &md2_playermodels[(skin_t*)spr->mobj->skin-skins];
-			md2->skin = (skin_t*)spr->mobj->skin-skins;
+			md2 = &md2_playermodels[((skin_t *)spr->mobj->skin)->skinnum];
+			md2->skin = ((skin_t *)spr->mobj->skin)->skinnum;
 		}
 		else
 		{
@@ -1409,7 +1409,7 @@ boolean HWR_DrawModel(gl_vissprite_t *spr)
 						skinnum = TC_RAINBOW;
 				}
 				else if (spr->mobj->skin && spr->mobj->sprite == SPR_PLAY)
-					skinnum = (INT32)((skin_t*)spr->mobj->skin-skins);
+					skinnum = (INT32)(((skin_t *)spr->mobj->skin)->skinnum);
 				else
 					skinnum = TC_DEFAULT;
 			}

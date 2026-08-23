@@ -3639,7 +3639,7 @@ void A_1upThinker(mobj_t *actor)
 		}
 	}
 
-	if (closestplayer == -1 || skins[players[closestplayer].skin].sprites[SPR2_LIFE].numframes == 0)
+	if (closestplayer == -1 || skins[players[closestplayer].skin]->sprites[SPR2_LIFE].numframes == 0)
 	{ // Closest player not found (no players in game?? may be empty dedicated server!), or does not have correct sprite.
 		if (actor->tracer)
 		{
@@ -3657,7 +3657,7 @@ void A_1upThinker(mobj_t *actor)
 	{
 		P_SetTarget(&actor->tracer, P_SpawnMobj(actor->x, actor->y, actor->z, MT_OVERLAY));
 		P_SetTarget(&actor->tracer->target, actor);
-		actor->tracer->skin = &skins[players[closestplayer].skin]; // required here to prevent spr2 default showing stand for a single frame
+		actor->tracer->skin = skins[players[closestplayer].skin]; // required here to prevent spr2 default showing stand for a single frame
 		P_SetMobjState(actor->tracer, actor->info->seestate);
 
 		// The overlay is going to be one tic early turning off and on
@@ -3667,7 +3667,7 @@ void A_1upThinker(mobj_t *actor)
 	}
 
 	actor->tracer->color = players[closestplayer].mo->color;
-	actor->tracer->skin = &skins[players[closestplayer].skin];
+	actor->tracer->skin = skins[players[closestplayer].skin];
 }
 
 // Function: A_MonitorPop
@@ -3737,7 +3737,7 @@ void A_MonitorPop(mobj_t *actor)
 			P_SetTarget(&newmobj->tracer, livesico);
 
 			livesico->color = newmobj->target->player->mo->color;
-			livesico->skin = &skins[newmobj->target->player->skin];
+			livesico->skin = skins[newmobj->target->player->skin];
 			P_SetMobjState(livesico, newmobj->info->seestate);
 
 			// We're using the overlay, so use the overlay 1up sprite (no text)
@@ -3823,7 +3823,7 @@ void A_GoldMonitorPop(mobj_t *actor)
 			P_SetTarget(&newmobj->tracer, livesico);
 
 			livesico->color = newmobj->target->player->mo->color;
-			livesico->skin = &skins[newmobj->target->player->skin];
+			livesico->skin = skins[newmobj->target->player->skin];
 			P_SetMobjState(livesico, newmobj->info->seestate);
 
 			// We're using the overlay, so use the overlay 1up sprite (no text)
@@ -5249,7 +5249,7 @@ void A_SignPlayer(mobj_t *actor)
 		if (!actor->target->player)
 			return;
 
-		skin = &skins[actor->target->player->skin];
+		skin = skins[actor->target->player->skin];
 		facecolor = actor->target->player->skincolor;
 
 		if (signcolor)
@@ -5280,10 +5280,10 @@ void A_SignPlayer(mobj_t *actor)
 				if (!SignSkinCheck(player, skincount))
 					skinnum++;
 			}
-			skin = &skins[skinnum];
+			skin = skins[skinnum];
 		}
 		else // specific skin
-			skin = &skins[locvar1];
+			skin = skins[locvar1];
 
 		facecolor = skin->prefcolor;
 		if (signcolor)

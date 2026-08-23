@@ -4971,7 +4971,7 @@ static void HWR_DrawSprites(void)
 
 			if (spr->mobj && spr->mobj->skin && spr->mobj->sprite == SPR_PLAY)
 			{
-				if (!cv_glmodels.value || md2_playermodels[(skin_t*)spr->mobj->skin-skins].notfound || md2_playermodels[(skin_t*)spr->mobj->skin-skins].scale < 0.0f)
+				if (!cv_glmodels.value || md2_playermodels[((skin_t *)spr->mobj->skin)->skinnum].notfound || md2_playermodels[((skin_t *)spr->mobj->skin)->skinnum].scale < 0.0f)
 					HWR_DrawSprite(spr);
 				else
 				{
@@ -5156,7 +5156,7 @@ static void HWR_ProjectSprite(mobj_t *thing)
 		if (cv_glmodels.value) //Yellow: Only MD2's dont disappear
 		{
 			if (thing->skin && thing->sprite == SPR_PLAY)
-				md2 = &md2_playermodels[( (skin_t *)thing->skin - skins )];
+				md2 = &md2_playermodels[((skin_t *)thing->skin)->skinnum];
 			else
 				md2 = &md2_models[thing->sprite];
 
@@ -5546,7 +5546,7 @@ static void HWR_ProjectSprite(mobj_t *thing)
 				&& ((leveltime/2) & 1))
 				skinnum = (thing->player->charflags & SF_MACHINE) ? TC_DASHMODE : TC_RAINBOW;
 			else if (thing->skin && thing->sprite == SPR_PLAY)
-				skinnum = (INT32)((skin_t*)thing->skin - skins);
+				skinnum = (INT32)(((skin_t *)thing->skin)->skinnum);
 		}
 
 		tr = R_GetTranslationRemap(thing->translation, vis->color, skinnum);
@@ -5573,7 +5573,7 @@ static void HWR_ProjectSprite(mobj_t *thing)
 		}
 		else if (thing->skin && thing->sprite == SPR_PLAY) // This thing is a player!
 		{
-			size_t skinnum = (skin_t*)thing->skin-skins;
+			size_t skinnum = ((skin_t *)thing->skin)->skinnum;
 			vis->colormap = R_GetTranslationColormap((INT32)skinnum, vis->color, GTC_CACHE);
 		}
 		else

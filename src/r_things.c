@@ -1010,7 +1010,7 @@ UINT8 *R_GetSpriteTranslation(vissprite_t *vis)
 				&& ((leveltime/2) & 1))
 				skinnum = (vis->mobj->player->charflags & SF_MACHINE) ? TC_DASHMODE : TC_RAINBOW;
 			else if (vis->mobj->skin && vis->mobj->sprite == SPR_PLAY)
-				skinnum = (INT32)((skin_t*)vis->mobj->skin - skins);
+				skinnum = (INT32)(((skin_t *)vis->mobj->skin)->skinnum);
 		}
 
 		tr = R_GetTranslationRemap(vis->mobj->translation, vis->color, skinnum);
@@ -1039,7 +1039,7 @@ UINT8 *R_GetSpriteTranslation(vissprite_t *vis)
 		}
 		else if (!(vis->cut & SC_PRECIP) && vis->mobj->skin && vis->mobj->sprite == SPR_PLAY) // This thing is a player!
 		{
-			size_t skinnum = (skin_t*)vis->mobj->skin-skins;
+			size_t skinnum = ((skin_t *)vis->mobj->skin)->skinnum;
 			return R_GetTranslationColormap((INT32)skinnum, vis->color, GTC_CACHE);
 		}
 		else // Use the defaults
@@ -1929,7 +1929,7 @@ static void R_ProjectSprite(mobj_t *thing)
 		sprinfo = &((skin_t *)thing->skin)->sprinfo[thing->sprite2];
 #endif
 		if (frame >= sprdef->numframes) {
-			CONS_Alert(CONS_ERROR, M_GetText("R_ProjectSprite: invalid skins[\"%s\"].sprites[%sSPR2_%s] frame %s\n"), ((skin_t *)thing->skin)->name, ((thing->sprite2 & FF_SPR2SUPER) ? "FF_SPR2SUPER|": ""), spr2names[(thing->sprite2 & ~FF_SPR2SUPER)], sizeu5(frame));
+			CONS_Alert(CONS_ERROR, M_GetText("R_ProjectSprite: invalid skins[\"%s\"]->sprites[%sSPR2_%s] frame %s\n"), ((skin_t *)thing->skin)->name, ((thing->sprite2 & FF_SPR2SUPER) ? "FF_SPR2SUPER|": ""), spr2names[(thing->sprite2 & ~FF_SPR2SUPER)], sizeu5(frame));
 			thing->sprite = states[S_UNKNOWN].sprite;
 			thing->frame = states[S_UNKNOWN].frame;
 			sprdef = &sprites[thing->sprite];
