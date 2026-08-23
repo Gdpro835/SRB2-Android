@@ -11595,7 +11595,7 @@ static void M_DrawLoadGameData(void)
 			if (savegameinfo[savetodraw].botskin)
 			{
 				skin_t *charbotskin = skins[savegameinfo[savetodraw].botskin-1];
-				sprdef = &charbotskin->sprites[SPR2_SIGN];
+				sprdef = P_GetSkinSpritedef(charbotskin, SPR2_SIGN);
 				if (!sprdef->numframes)
 					goto skipbot;
 				colormap = R_GetTranslationColormap(savegameinfo[savetodraw].botskin-1, charbotskin->prefcolor, GTC_CACHE);
@@ -11615,7 +11615,7 @@ skipbot:
 			// signpost image
 			if (!charskin) // shut up compiler
 				goto skipsign;
-			sprdef = &charskin->sprites[SPR2_SIGN];
+			sprdef = P_GetSkinSpritedef(charskin, SPR2_SIGN);
 			colormap = R_GetTranslationColormap(savegameinfo[savetodraw].skinnum, charskin->prefcolor, GTC_CACHE);
 			if (!sprdef->numframes)
 				goto skipsign;
@@ -11644,7 +11644,7 @@ skipsign:
 				goto skiplife;
 
 			// lives
-			sprdef = &charskin->sprites[SPR2_LIFE];
+			sprdef = P_GetSkinSpritedef(charskin, SPR2_LIFE);
 			if (!sprdef->numframes)
 				goto skiplife;
 			sprframe = &sprdef->spriteframes[0];
@@ -12627,9 +12627,9 @@ static void M_CacheCharacterSelectEntry(INT32 i, INT32 skinnum)
 {
 	if (!(description[i].picname[0]))
 	{
-		if (skins[skinnum]->sprites[SPR2_XTRA].numframes > XTRA_CHARSEL)
+		if (P_GetSkinSpritedef(skins[skinnum], SPR2_XTRA)->numframes > XTRA_CHARSEL)
 		{
-			spritedef_t *sprdef = &skins[skinnum]->sprites[SPR2_XTRA];
+			spritedef_t *sprdef = P_GetSkinSpritedef(skins[skinnum], SPR2_XTRA);
 			spriteframe_t *sprframe = &sprdef->spriteframes[XTRA_CHARSEL];
 			description[i].charpic = W_CachePatchNum(sprframe->lumppat[0], PU_PATCH);
 		}
@@ -13505,9 +13505,9 @@ void M_DrawTimeAttackMenu(void)
 
 	// Character face!
 	{
-		if (skins[cv_chooseskin.value-1]->sprites[SPR2_XTRA].numframes > XTRA_CHARSEL)
+		if (P_GetSkinSpritedef(skins[cv_chooseskin.value-1], SPR2_XTRA)->numframes > XTRA_CHARSEL)
 		{
-			spritedef_t *sprdef = &skins[cv_chooseskin.value-1]->sprites[SPR2_XTRA];
+			spritedef_t *sprdef = P_GetSkinSpritedef(skins[cv_chooseskin.value-1], SPR2_XTRA);
 			spriteframe_t *sprframe = &sprdef->spriteframes[XTRA_CHARSEL];
 			PictureOfUrFace = W_CachePatchNum(sprframe->lumppat[0], PU_PATCH);
 		}
@@ -16011,7 +16011,7 @@ static void M_DrawSetupMultiPlayerMenu(void)
 	}
 #endif
 
-	sprdef = &skins[setupm_fakeskin]->sprites[multi_spr2];
+	sprdef = P_GetSkinSpritedef(skins[setupm_fakeskin], multi_spr2);
 
 	if (!setupm_fakecolor->color || !sprdef->numframes) // should never happen but hey, who knows
 		goto faildraw;
