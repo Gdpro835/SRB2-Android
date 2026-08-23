@@ -99,9 +99,6 @@ extern boolean chat_on;
 extern patch_t *hu_font[HU_FONTSIZE], *tny_font[HU_FONTSIZE];
 extern patch_t *tallnum[10];
 extern patch_t *nightsnum[10];
-
-extern UINT8 spam_tokens[MAXPLAYERS];
-extern tic_t spam_tics[MAXPLAYERS];
 extern patch_t *lt_font[LT_FONTSIZE];
 extern patch_t *cred_font[CRED_FONTSIZE];
 extern patch_t *ntb_font[NT_FONTSIZE];
