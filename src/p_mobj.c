@@ -8116,6 +8116,10 @@ static boolean P_MobjBossThink(mobj_t *mobj)
 		case MT_METALSONIC_BATTLE:
 			P_Boss9Thinker(mobj);
 			break;
+		case MT_OLDK:
+			if (mobj->health <= 0)
+				mobj->momz -= (2*FRACUNIT)/3;
+			break;
 		default: // Generic SOC-made boss
 			if (mobj->flags2 & MF2_SKULLFLY)
 				P_SpawnGhostMobj(mobj);
@@ -10596,6 +10600,7 @@ static fixed_t P_DefaultMobjShadowScale (mobj_t *thing)
 		case MT_SMALLGRABCHAIN:
 		case MT_BIGGRABCHAIN:
 
+		case MT_BLUESPRINGBALL:
 		case MT_YELLOWSPRINGBALL:
 		case MT_REDSPRINGBALL:
 
@@ -13088,6 +13093,32 @@ static boolean P_SetupSpawnedMapThing(mapthing_t *mthing, mobj_t *mobj, boolean 
 			P_ReturnThrustX(mobj, mobjangle, 4 << FRACBITS),
 			P_ReturnThrustY(mobj, mobjangle, 4 << FRACBITS),
 			0, ((mobj->type == MT_CEZPOLE1) ? MT_CEZBANNER1 : MT_CEZBANNER2))->angle = mobjangle + ANGLE_90;
+	}
+	break;
+	case MT_SSZTREE:
+	{ // Spawn the branches
+		INT32 i;
+		mobj_t *branch;
+		for (i = 0; i < 5; i++)
+		{
+			branch = P_SpawnMobjFromMobj(mobj, 0, 0, 0, MT_SSZTREE_BRANCH);
+			if (P_MobjWasRemoved(branch))
+				continue;
+			branch->angle = mobj->angle + FixedAngle(i*72*FRACUNIT);
+		}
+	}
+	break;
+	case MT_SSZTREE2:
+	{ // Spawn the branches
+		INT32 i;
+		mobj_t *branch;
+		for (i = 0; i < 5; i++)
+		{
+			branch = P_SpawnMobjFromMobj(mobj, 0, 0, 0, MT_SSZTREE2_BRANCH);
+			if (P_MobjWasRemoved(branch))
+				continue;
+			branch->angle = mobj->angle + FixedAngle(i*72*FRACUNIT);
+		}
 	}
 	break;
 	case MT_HHZTREE_TOP:

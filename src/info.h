@@ -798,6 +798,7 @@ typedef enum sprite
 	SPR_BMCH, // Big Mace Chain
 	SPR_SMCE, // Small Mace
 	SPR_BMCE, // Big Mace
+	SPR_BSPB, // Blue spring on a ball
 	SPR_YSPB, // Yellow spring on a ball
 	SPR_RSPB, // Red spring on a ball
 	SPR_SFBR, // Small Firebar
@@ -852,6 +853,8 @@ typedef enum sprite
 	SPR_XMS4, // Lamppost
 	SPR_XMS5, // Hanging Star
 	SPR_XMS6, // Mistletoe
+	SPR_SNTT, // Silver Shiver tree
+	SPR_SSTT, // Silver Shiver tree with snow
 	SPR_FHZI, // FHZ Ice
 	SPR_ROSY,
 
@@ -885,6 +888,8 @@ typedef enum sprite
 	// Misc Scenery
 	SPR_STLG, // Stalagmites
 	SPR_DBAL, // Disco
+	SPR_GINE, // Crystalline Heights tree
+	SPR_PPAL, // Pristine Shores palm trees
 
 	// Powerup Indicators
 	SPR_ARMA, // Armageddon Shield Orb
@@ -1070,6 +1075,9 @@ typedef enum sprite
 	// Gravity Well Objects
 	SPR_GWLG,
 	SPR_GWLR,
+
+	// LJ Knuckles
+	SPR_OLDK,
 
 	SPR_FIRSTFREESLOT,
 	SPR_LASTFREESLOT = SPR_FIRSTFREESLOT + NUMSPRITEFREESLOTS - 1,
@@ -2745,6 +2753,13 @@ typedef enum state
 	S_SMALLGRABCHAIN,
 	S_BIGGRABCHAIN,
 
+	// Blue spring on a ball
+	S_BLUESPRINGBALL,
+	S_BLUESPRINGBALL2,
+	S_BLUESPRINGBALL3,
+	S_BLUESPRINGBALL4,
+	S_BLUESPRINGBALL5,
+
 	// Yellow spring on a ball
 	S_YELLOWSPRINGBALL,
 	S_YELLOWSPRINGBALL2,
@@ -3049,6 +3064,10 @@ typedef enum state
 	S_LAMPPOST2,  // with snow
 	S_HANGSTAR,
 	S_MISTLETOE,
+	S_SSZTREE,
+	S_SSZTREE_BRANCH,
+	S_SSZTREE2,
+	S_SSZTREE2_BRANCH,
 	// Xmas GFZ bushes
 	S_XMASBLUEBERRYBUSH,
 	S_XMASBERRYBUSH,
@@ -3169,6 +3188,9 @@ typedef enum state
 	S_DBALL5,
 	S_DBALL6,
 	S_EGGSTATUE2,
+	S_GINE,
+	S_PPAL,
+	S_PPEL,
 
 	// Shield Orb
 	S_ARMA1,
@@ -4357,6 +4379,12 @@ typedef enum state
 
 	S_NAMECHECK,
 
+	// LJ Knuckles
+	S_OLDK_STND,
+	S_OLDK_DIE0,
+	S_OLDK_DIE1,
+	S_OLDK_DIE2,
+
 	S_FIRSTFREESLOT,
 	S_LASTFREESLOT = S_FIRSTFREESLOT + NUMSTATEFREESLOTS - 1,
 	NUMSTATES
@@ -4723,6 +4751,7 @@ typedef enum mobj_type
 	MT_BIGMACE, // Big Mace
 	MT_SMALLGRABCHAIN, // Small Grab Chain
 	MT_BIGGRABCHAIN, // Big Grab Chain
+	MT_BLUESPRINGBALL, // Blue spring on a ball
 	MT_YELLOWSPRINGBALL, // Yellow spring on a ball
 	MT_REDSPRINGBALL, // Red spring on a ball
 	MT_SMALLFIREBAR, // Small Firebar
@@ -4846,6 +4875,10 @@ typedef enum mobj_type
 	MT_LAMPPOST2,  // with snow
 	MT_HANGSTAR,
 	MT_MISTLETOE,
+	MT_SSZTREE,
+	MT_SSZTREE_BRANCH,
+	MT_SSZTREE2,
+	MT_SSZTREE2_BRANCH,
 	// Xmas GFZ bushes
 	MT_XMASBLUEBERRYBUSH,
 	MT_XMASBERRYBUSH,
@@ -4925,6 +4958,9 @@ typedef enum mobj_type
 	// Misc scenery
 	MT_DBALL,
 	MT_EGGSTATUE2,
+	MT_GINE,
+	MT_PPAL,
+	MT_PPEL,
 
 	// Powerup Indicators
 	MT_ELEMENTAL_ORB, // Elemental shield mobj
@@ -5152,6 +5188,8 @@ typedef enum mobj_type
 
 	MT_NAMECHECK,
 	MT_RAY, // General purpose mobj
+
+	MT_OLDK,
 
 	MT_FIRSTFREESLOT,
 	MT_LASTFREESLOT = MT_FIRSTFREESLOT + NUMMOBJFREESLOTS - 1,

@@ -341,6 +341,7 @@ light_t *t_lspr[NUMSPRITES] =
 	&lspr[NOLIGHT],     // SPR_BMCH
 	&lspr[NOLIGHT],     // SPR_SMCE
 	&lspr[NOLIGHT],     // SPR_BMCE
+	&lspr[NOLIGHT],     // SPR_BSPB
 	&lspr[NOLIGHT],     // SPR_YSPB
 	&lspr[NOLIGHT],     // SPR_RSPB
 	&lspr[REDBALL_L],   // SPR_SFBR
@@ -394,6 +395,8 @@ light_t *t_lspr[NUMSPRITES] =
 	&lspr[NOLIGHT],     // SPR_XMS4
 	&lspr[NOLIGHT],     // SPR_XMS5
 	&lspr[NOLIGHT],     // SPR_XMS6
+	&lspr[NOLIGHT],     // SPR_SNTT
+	&lspr[NOLIGHT],     // SPR_SSTT
 	&lspr[NOLIGHT],     // SPR_FHZI
 	&lspr[NOLIGHT],     // SPR_ROSY
 
@@ -427,6 +430,8 @@ light_t *t_lspr[NUMSPRITES] =
 	// Misc Scenery
 	&lspr[NOLIGHT],     // SPR_STLG
 	&lspr[NOLIGHT],     // SPR_DBAL
+	&lspr[NOLIGHT],     // SPR_GINE
+	&lspr[NOLIGHT],     // SPR_PPAL
 
 	// Powerup Indicators
 	&lspr[NOLIGHT],     // SPR_ARMA
@@ -612,6 +617,9 @@ light_t *t_lspr[NUMSPRITES] =
 	// Gravity Well Objects
 	&lspr[NOLIGHT],     // SPR_GWLG
 	&lspr[NOLIGHT],     // SPR_GWLR
+
+	// LJ Knuckles
+	&lspr[NOLIGHT],		// SPR_OLDK,
 
 	// Free slots
 	&lspr[NOLIGHT],
