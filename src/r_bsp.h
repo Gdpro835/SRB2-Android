@@ -33,6 +33,9 @@ extern drawseg_t *curdrawsegs;
 extern drawseg_t *drawsegs;
 extern drawseg_t *ds_p;
 extern INT32 doorclosed;
+extern boolean horizonline;
+
+void R_RenderPortalHorizonLine(sector_t *sector);
 
 // BSP?
 void R_ClearClipSegs(void);

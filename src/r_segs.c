@@ -2515,7 +2515,7 @@ void R_StoreWallRange(INT32 start, INT32 stop)
 	worldtopslope >>= 4;
 	worldbottomslope >>= 4;
 
-	if (linedef->special == HORIZONSPECIAL) { // HORIZON LINES
+	if (horizonline) { // HORIZON LINES
 		topstep = bottomstep = 0;
 		topfrac = bottomfrac = (centeryfrac>>4);
 		topfrac++; // Prevent 1px HOM
@@ -2616,7 +2616,7 @@ void R_StoreWallRange(INT32 start, INT32 stop)
 		{
 			ffloor[i].f_pos >>= 4;
 			ffloor[i].f_pos_slope >>= 4;
-			if (linedef->special == HORIZONSPECIAL) // Horizon lines extend FOFs in contact with them too.
+			if (horizonline) // Horizon lines extend FOFs in contact with them too.
 			{
 				ffloor[i].f_step = 0;
 				ffloor[i].f_frac = (centeryfrac>>4);

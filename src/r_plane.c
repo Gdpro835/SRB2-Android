@@ -373,9 +373,10 @@ static visplane_t *new_visplane(unsigned hash)
 //              Same height, same flattexture, same lightlevel.
 //              If not, allocates another of them.
 //
-visplane_t *R_FindPlane(fixed_t height, INT32 picnum, INT32 lightlevel,
-	fixed_t xoff, fixed_t yoff, fixed_t xscale, fixed_t yscale, angle_t plangle,
-	extracolormap_t *planecolormap, ffloor_t *pfloor, polyobj_t *polyobj, pslope_t *slope)
+visplane_t *R_FindPlane(sector_t *sector, fixed_t height, INT32 picnum, INT32 lightlevel,
+	fixed_t xoff, fixed_t yoff, fixed_t xscale, fixed_t yscale,
+	angle_t plangle, extracolormap_t *planecolormap,
+	ffloor_t *pfloor, polyobj_t *polyobj, pslope_t *slope, sectorportal_t *portalsector)
 {
 	visplane_t *check;
 	unsigned hash;
@@ -443,7 +444,8 @@ visplane_t *R_FindPlane(fixed_t height, INT32 picnum, INT32 lightlevel,
 				&& check->viewangle == viewangle
 				&& check->plangle == plangle
 				&& check->slope == slope
-				&& check->polyobj == polyobj)
+				&& check->polyobj == polyobj
+				&& P_CompareSectorPortals(check->portalsector, portalsector))
 			{
 				return check;
 			}
@@ -471,6 +473,8 @@ visplane_t *R_FindPlane(fixed_t height, INT32 picnum, INT32 lightlevel,
 	check->plangle = plangle;
 	check->polyobj = polyobj;
 	check->slope = slope;
+	check->sector = sector;
+	check->portalsector = portalsector;
 
 	memset(check->top, 0xff, sizeof (check->top));
 	memset(check->bottom, 0x00, sizeof (check->bottom));
@@ -549,6 +553,8 @@ visplane_t *R_CheckPlane(visplane_t *pl, INT32 start, INT32 stop)
 		new_pl->plangle = pl->plangle;
 		new_pl->polyobj = pl->polyobj;
 		new_pl->slope = pl->slope;
+		new_pl->sector = pl->sector;
+		new_pl->portalsector = pl->portalsector;
 		pl = new_pl;
 		pl->minx = start;
 		pl->maxx = stop;
