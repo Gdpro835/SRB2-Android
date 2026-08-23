@@ -199,6 +199,7 @@ void P_VectorInstaThrust(fixed_t xa, fixed_t xb, fixed_t xc, fixed_t ya, fixed_t
 	fixed_t za, fixed_t zb, fixed_t zc, fixed_t momentum, mobj_t *mo);
 void P_DoSpinDashDust(player_t *player);
 void P_DoTailsOverlay(player_t *player, mobj_t *tails);
+void P_DoFollowMobj(player_t *player, mobj_t *followmobj);
 void P_DoMetalJetFume(player_t *player, mobj_t *fume);
 
 mobj_t *P_LookForFocusTarget(player_t *player, mobj_t *exclude, SINT8 direction, UINT8 lockonflags);
@@ -208,6 +209,7 @@ void P_NukeEnemies(mobj_t *inflictor, mobj_t *source, fixed_t radius);
 void P_Earthquake(mobj_t *inflictor, mobj_t *source, fixed_t radius);
 boolean P_HomingAttack(mobj_t *source, mobj_t *enemy); /// \todo doesn't belong in p_user
 boolean P_SuperReady(player_t *player);
+void P_DoSuperDetransformation(player_t *player);
 void P_DoJump(player_t *player, boolean soundandstate);
 #define P_AnalogMove(player) (P_ControlStyle(player) == CS_LMAOGALOG)
 boolean P_TransferToNextMare(player_t *player);
