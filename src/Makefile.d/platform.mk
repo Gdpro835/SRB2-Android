@@ -43,6 +43,10 @@ endif
 else ifdef FREEBSD
 UNIX=1
 platform=freebsd
+else ifdef HAIKU
+# Give Haiku its own configuration, since it
+# isn't actually UNIX.
+include Makefile.d/haiku.mk
 else ifdef SOLARIS # FIXME: UNTESTED
 UNIX=1
 platform=solaris
@@ -73,6 +77,8 @@ endif
 
 ifeq ($(SDL), 1)
 include $(MAKE_DIR)/sdl.mk
+else ifeq ($(DEDICATED), 1)
+include $(MAKE_DIR)/dedicated.mk
 else ifndef ANDROID
 include $(MAKE_DIR)/dummy.mk
 endif
