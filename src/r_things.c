@@ -848,6 +848,31 @@ INT16 *mceilingclip;
 fixed_t spryscale = 0, sprtopscreen = 0, sprbotscreen = 0;
 fixed_t windowtop = 0, windowbottom = 0;
 
+static UINT8 *flippedcol = NULL;
+static size_t flippedcolsize = 0;
+
+// Draws a column upside down, for negatively scaled walls and sprites
+void R_DrawFlippedPost(UINT8 *source, unsigned length, void (*drawcolfunc)(void))
+{
+	UINT8 *s, *d;
+
+	if (!length)
+		return;
+
+	if (!flippedcolsize || length > flippedcolsize)
+	{
+		flippedcolsize = length;
+		flippedcol = Z_Realloc(flippedcol, length, PU_STATIC, NULL);
+	}
+
+	dc_source = flippedcol;
+
+	for (s = (UINT8 *)source, d = flippedcol+length-1; d >= flippedcol; s++)
+		*d-- = *s;
+
+	drawcolfunc();
+}
+
 void R_DrawMaskedColumn(column_t *column)
 {
 	INT32 topscreen;
