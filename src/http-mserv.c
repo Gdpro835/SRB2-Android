@@ -99,6 +99,7 @@ struct HMS_buffer
 	char *buffer;
 	int   needle;
 	int    end;
+	int   proto;
 };
 
 static void
@@ -376,6 +377,7 @@ HMS_connect (int proto, const char *format, ...)
 
 	buffer = malloc(sizeof *buffer);
 	buffer->curl = curl;
+	buffer->proto = proto;
 	buffer->end = DEFAULT_BUFFER_SIZE;
 	buffer->buffer = malloc(buffer->end);
 	buffer->needle = 0;
@@ -442,6 +444,29 @@ HMS_do (struct HMS_buffer *buffer)
 
 		curl_easy_getinfo(buffer->curl, CURLINFO_OS_ERRNO, &oserrno);
 		curl_easy_getinfo(buffer->curl, CURLINFO_SSL_VERIFYRESULT, &verifyresult);
+
+#ifndef NO_IPV6
+		/* A failed IPv6 attempt is not an error worth shouting about: plenty
+		   of networks, mobile ones above all, simply have no IPv6 at all. The
+		   IPv4 listing carries the server just fine on its own. */
+		if (buffer->proto == PROTO_V6)
+		{
+			CONS_Printf(
+					"HMS: no IPv6 route to the master server (curl code %d, system error %ld).\n",
+					(int)cc,
+					oserrno
+			);
+
+			if (cc == CURLE_COULDNT_CONNECT || cc == CURLE_COULDNT_RESOLVE_HOST)
+			{
+				/* Don't keep paying the connection timeout on every update. */
+				hms_allow_ipv6 = false;
+				CONS_Printf("HMS: not trying IPv6 again until the game is restarted.\n");
+			}
+
+			return 0;
+		}
+#endif
 
 		Contact_error();
 		Blame(
@@ -668,7 +693,7 @@ HMS_register (void)
 		/* Plenty of networks (mobile ones especially) have no IPv6 at all.
 		   Don't report the whole registration as failed in that case. */
 		if (! ok_ipv6 && ok)
-			CONS_Printf("Only listed over IPv4; the IPv6 listing failed.\n");
+			CONS_Printf("Listed over IPv4 only.\n");
 
 		ok = (ok || ok_ipv6);
 	}
