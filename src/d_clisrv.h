@@ -363,6 +363,7 @@ extern consvar_t cv_playbackspeed;
 #define KICK_MSG_PING_HIGH   6
 #define KICK_MSG_CUSTOM_KICK 7
 #define KICK_MSG_CUSTOM_BAN  8
+#define KICK_MSG_IDLE        9
 #define KICK_MSG_KEEP_BODY   0x80
 
 typedef enum
@@ -400,6 +401,7 @@ extern consvar_t cv_netticbuffer, cv_allownewplayer, cv_joinnextround, cv_maxpla
 extern consvar_t cv_resynchattempts, cv_blamecfail;
 extern consvar_t cv_maxsend, cv_noticedownload, cv_downloadspeed;
 extern consvar_t cv_dedicatedidletime;
+extern consvar_t cv_idletime, cv_idleaction;
 
 // Used in d_net, the only dependence
 tic_t ExpandTics(INT32 low, INT32 node);
