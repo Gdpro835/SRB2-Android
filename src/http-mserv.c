@@ -883,7 +883,16 @@ HMS_fetch_servers (msg_server_t *list, int room_number, int query_id)
 						break;
 #endif
 
-					if (strcmp(version, local_version) == 0)
+					if (strcmp(version, local_version) != 0)
+					{
+						if (cv_masterserver_debug.value)
+						{
+							CONS_Printf(
+									"HMS: skipping %s:%s, it runs %s and we are %s\n",
+									address, port, version, local_version);
+						}
+					}
+					else
 					{
 						strlcpy(list[i].ip,      address, sizeof list[i].ip);
 						strlcpy(list[i].port,    port,    sizeof list[i].port);
@@ -918,6 +927,8 @@ HMS_fetch_servers (msg_server_t *list, int room_number, int query_id)
 
 		if (doing_shit)
 			list[i].header.buffer[0] = 0;
+
+		CONS_Printf("HMS: the master server listed %d server(s) for us\n", i);
 	}
 	else
 		list = NULL;

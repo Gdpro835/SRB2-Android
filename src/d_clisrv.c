@@ -1963,6 +1963,10 @@ void CL_QueryServerList (msg_server_t *server_list)
 
 	for (i = 0; server_list[i].header.buffer[0]; i++)
 	{
+		if (cv_masterserver_debug.value)
+			CONS_Printf("Asking %s:%s for server info...\n",
+					server_list[i].ip, server_list[i].port);
+
 		// Make sure MS version matches our own, to
 		// thwart nefarious servers who lie to the MS.
 
@@ -1971,7 +1975,11 @@ void CL_QueryServerList (msg_server_t *server_list)
 		{
 			INT32 node = I_NetMakeNodewPort(server_list[i].ip, server_list[i].port);
 			if (node == -1)
+			{
+				CONS_Alert(CONS_WARNING, "Could not create a node for %s:%s\n",
+						server_list[i].ip, server_list[i].port);
 				break; // no more node free
+			}
 			SendAskInfo(node);
 			// Force close the connection so that servers can't eat
 			// up nodes forever if we never get a reply back from them
