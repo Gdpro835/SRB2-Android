@@ -30,7 +30,7 @@ packet versions.
 If you change the struct or the meaning of a field
 therein, increment this number.
 */
-#define PACKETVERSION 4
+#define PACKETVERSION 5
 
 // Network play related stuff.
 // There is a data struct that stores network
@@ -213,6 +213,7 @@ enum {
 };
 
 #define MAXSERVERNAME 32
+#define MAX_MIRROR_LENGTH 256
 #define MAXFILENEEDED 915
 // This packet is too large
 typedef struct
@@ -243,6 +244,7 @@ typedef struct
 	unsigned char mapmd5[16];
 	UINT8 actnum;
 	UINT8 iszone;
+	char httpsource[MAX_MIRROR_LENGTH];
 	UINT8 fileneeded[MAXFILENEEDED]; // is filled with writexxx (byteptr.h)
 } ATTRPACK serverinfo_pak;
 
@@ -401,6 +403,7 @@ extern consvar_t cv_netticbuffer, cv_allownewplayer, cv_maxplayers, cv_joindelay
 extern consvar_t cv_resynchattempts, cv_blamecfail;
 extern consvar_t cv_maxsend, cv_noticedownload, cv_downloadspeed;
 extern consvar_t cv_dedicatedidletime;
+extern consvar_t cv_httpsource;
 extern consvar_t cv_idletime, cv_idleaction;
 
 // Used in d_net, the only dependence

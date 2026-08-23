@@ -132,6 +132,11 @@ static CV_PossibleValue_t idleaction_cons_t[] = {{1, "Kick"}, {2, "Spectate"}, {
 consvar_t cv_idleaction = CVAR_INIT ("idleaction", "Spectate", CV_SAVE|CV_NETVAR, idleaction_cons_t, NULL);
 consvar_t cv_idletime = CVAR_INIT ("idletime", "3", CV_SAVE|CV_NETVAR, CV_Unsigned, NULL);
 
+/* Announced to clients in PT_SERVERINFO. The port does not download add-ons
+   over HTTP yet, but the field is part of the packet format as of 2.2.14 and
+   servers we host should be able to advertise a mirror all the same. */
+consvar_t cv_httpsource = CVAR_INIT ("http_source", "", CV_SAVE, NULL, NULL);
+
 UINT8 adminpassmd5[16];
 boolean adminpasswordset = false;
 
@@ -1455,6 +1460,8 @@ static void SV_SendServerInfo(INT32 node, tic_t servertime)
 
 	memset(netbuffer->u.serverinfo.maptitle, 0, sizeof netbuffer->u.serverinfo.maptitle);
 
+	memset(netbuffer->u.serverinfo.httpsource, 0, MAX_MIRROR_LENGTH);
+
 	if (mapheaderinfo[gamemap-1] && *mapheaderinfo[gamemap-1]->lvlttl)
 	{
 		char *read = mapheaderinfo[gamemap-1]->lvlttl, *writ = netbuffer->u.serverinfo.maptitle;
@@ -1480,6 +1487,19 @@ static void SV_SendServerInfo(INT32 node, tic_t servertime)
 
 	if (mapheaderinfo[gamemap-1])
 		netbuffer->u.serverinfo.actnum = mapheaderinfo[gamemap-1]->actnum;
+
+	{
+		const char *httpurl = cv_httpsource.string;
+		size_t mirror_length = strlen(httpurl);
+		if (mirror_length > MAX_MIRROR_LENGTH)
+			mirror_length = MAX_MIRROR_LENGTH;
+
+		if (snprintf(netbuffer->u.serverinfo.httpsource, mirror_length+1, "%s", httpurl) < 0)
+			// If there's an encoding error, send nothing, we accept that the above may be truncated
+			strncpy(netbuffer->u.serverinfo.httpsource, "", mirror_length);
+
+		netbuffer->u.serverinfo.httpsource[MAX_MIRROR_LENGTH-1] = '\0';
+	}
 
 	p = PutFileNeeded(0);
 

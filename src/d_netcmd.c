@@ -639,6 +639,7 @@ void D_RegisterServerCommands(void)
 	CV_RegisterVar(&cv_dedicatedidletime);
 	CV_RegisterVar(&cv_idletime);
 	CV_RegisterVar(&cv_idleaction);
+	CV_RegisterVar(&cv_httpsource);
 #endif
 
 	COM_AddCommand("ping", Command_Ping_f, COM_LUA);
