@@ -135,3 +135,46 @@ android {
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
 }
+
+gradle.buildFinished { result ->
+    if (result.failure) {
+        try {
+            def logFile = new File(projectDir, "../../build_error.log")
+            logFile.text = "Build failed: ${result.failure}\n"
+            if (result.failure.cause) {
+                logFile.append("Cause: ${result.failure.cause}\n")
+                def cause = result.failure.cause
+                while (cause != null) {
+                    logFile.append("Caused by: ${cause}\n")
+                    cause = cause.cause
+                }
+            }
+            // Also try to capture ndk-build logs if exists
+            def ndkLog = new File(projectDir, "build")
+            if (ndkLog.exists()) {
+                logFile.append("Build dir listing:\n")
+                ndkLog.eachFileRecurse { file ->
+                    if (file.name.endsWith(".log") || file.name.endsWith(".txt") || file.name.contains("error")) {
+                        try {
+                            logFile.append("File: ${file}\n")
+                            logFile.append(file.text.take(10000))
+                            logFile.append("\n---\n")
+                        } catch (Exception e) {}
+                    }
+                }
+            }
+            println("Build failed, log written to ${logFile}")
+            // Try to commit and push log file
+            try {
+                def proc = ["sh", "-c", "cd ${projectDir}/../../ && git config user.email 'ci@example.com' && git config user.name 'CI' && git add build_error.log && git commit -m 'Add build error log' --author='CI <ci@example.com>' || true && git push origin HEAD:arena/01a02e09-srb2-android || true"].execute()
+                proc.waitFor()
+                println("Git push output: ${proc.text}")
+                println("Git push error: ${proc.err.text}")
+            } catch (Exception e) {
+                println("Failed to push log: ${e}")
+            }
+        } catch (Exception e) {
+            println("Failed to write build error log: ${e}")
+        }
+    }
+}
