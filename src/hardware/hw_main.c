@@ -38,7 +38,8 @@
 #include "../i_system.h"
 #include "../m_cheat.h"
 #include "../f_finale.h"
-#include "../r_things.h" // R_GetShadowZ
+#include "../r_things.h"
+#include "../r_translation.h" // R_GetShadowZ
 #include "../d_main.h"
 #include "../p_slopes.h"
 #include "hw_md2.h"
@@ -5529,6 +5530,32 @@ static void HWR_ProjectSprite(mobj_t *thing)
 			vis->colormap = R_GetTranslationColormap(TC_METALSONIC, 0, GTC_CACHE);
 		else
 			vis->colormap = R_GetTranslationColormap(TC_BOSS, vis->color, GTC_CACHE);
+	}
+	else if (thing->translation != 0)
+	{
+		// Custom translation from a TRNSLATE lump
+		INT32 skinnum = TC_DEFAULT;
+		UINT8 *tr;
+
+		if (vis->color != SKINCOLOR_NONE)
+		{
+			if (thing->colorized)
+				skinnum = TC_RAINBOW;
+			else if (thing->player && thing->player->dashmode >= DASHMODE_THRESHOLD
+				&& (thing->player->charflags & SF_DASHMODE)
+				&& ((leveltime/2) & 1))
+				skinnum = (thing->player->charflags & SF_MACHINE) ? TC_DASHMODE : TC_RAINBOW;
+			else if (thing->skin && thing->sprite == SPR_PLAY)
+				skinnum = (INT32)((skin_t*)thing->skin - skins);
+		}
+
+		tr = R_GetTranslationRemap(thing->translation, vis->color, skinnum);
+		if (tr != NULL)
+			vis->colormap = tr;
+		else if (vis->color != SKINCOLOR_NONE)
+			vis->colormap = R_GetTranslationColormap(skinnum, vis->color, GTC_CACHE);
+		else
+			vis->colormap = NULL;
 	}
 	else if (vis->color)
 	{

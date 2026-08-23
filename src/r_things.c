@@ -25,6 +25,7 @@
 #include "i_system.h"
 #include "r_fps.h"
 #include "r_things.h"
+#include "r_translation.h"
 #include "r_patch.h"
 #include "r_patchrotation.h"
 #include "r_picformats.h"
@@ -993,6 +994,33 @@ UINT8 *R_GetSpriteTranslation(vissprite_t *vis)
 			return R_GetTranslationColormap(TC_METALSONIC, 0, GTC_CACHE);
 		else
 			return R_GetTranslationColormap(TC_BOSS, vis->color, GTC_CACHE);
+	}
+	else if (!(vis->cut & SC_PRECIP) && vis->mobj->translation != 0)
+	{
+		// Custom translation from a TRNSLATE lump
+		INT32 skinnum = TC_DEFAULT;
+		UINT8 *tr;
+
+		if (vis->color != SKINCOLOR_NONE)
+		{
+			if (vis->mobj->colorized)
+				skinnum = TC_RAINBOW;
+			else if (vis->mobj->player && vis->mobj->player->dashmode >= DASHMODE_THRESHOLD
+				&& (vis->mobj->player->charflags & SF_DASHMODE)
+				&& ((leveltime/2) & 1))
+				skinnum = (vis->mobj->player->charflags & SF_MACHINE) ? TC_DASHMODE : TC_RAINBOW;
+			else if (vis->mobj->skin && vis->mobj->sprite == SPR_PLAY)
+				skinnum = (INT32)((skin_t*)vis->mobj->skin - skins);
+		}
+
+		tr = R_GetTranslationRemap(vis->mobj->translation, vis->color, skinnum);
+		if (tr != NULL)
+			return tr;
+
+		if (vis->color != SKINCOLOR_NONE)
+			return R_GetTranslationColormap(skinnum, vis->color, GTC_CACHE);
+
+		return NULL;
 	}
 	else if (vis->color)
 	{

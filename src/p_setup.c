@@ -28,6 +28,7 @@
 #include "i_system.h"
 
 #include "r_data.h"
+#include "r_translation.h"
 #include "r_things.h" // for R_AddSpriteDefs
 #include "r_textures.h"
 #include "r_patch.h"
@@ -8175,6 +8176,8 @@ static boolean P_LoadAddon(UINT16 numlumps)
 	if (rendermode == render_opengl && (vid.glstate == VID_GL_LIBRARY_LOADED))
 		HWR_ClearAllTextures();
 #endif
+
+	R_LoadParsedTranslations();
 
 	//
 	// search for sprite replacements

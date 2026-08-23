@@ -26,6 +26,7 @@
 #include "z_zone.h"
 #include "console.h" // Until buffering gets finished
 #include "libdivide.h" // used by NPO2 tilted span functions
+#include "r_translation.h"
 
 #ifdef HWRENDER
 #include "hardware/hw_main.h"
@@ -133,10 +134,16 @@ UINT32 nflatxshift, nflatyshift, nflatshiftup, nflatmask;
 #define BLINK_TT_CACHE_INDEX (MAXSKINS + 5)
 #define DASHMODE_TT_CACHE_INDEX (MAXSKINS + 6)
 #define DEFAULT_STARTTRANSCOLOR 96
-#define NUM_PALETTE_ENTRIES 256
 
 static UINT8 **translationtablecache[MAXSKINS + 7] = {NULL};
 UINT8 skincolor_modified[MAXSKINCOLORS];
+
+static INT32 SkinToCacheIndex(INT32 skinnum);
+
+INT32 R_SkinTranslationToCacheIndex(INT32 translation)
+{
+	return SkinToCacheIndex(translation);
+}
 
 static INT32 SkinToCacheIndex(INT32 skinnum)
 {
@@ -600,11 +607,16 @@ UINT8* R_GetTranslationColormap(INT32 skinnum, skincolornum_t color, UINT8 flags
 		// Rebuild the cache if necessary
 		if (skincolor_modified[color])
 		{
+			// Moved up here so that R_UpdateTranslationRemaps doesn't cause a stack overflow,
+			// since in this situation, it will call R_GetTranslationColormap
+			skincolor_modified[color] = false;
+
 			for (i = 0; i < (INT32)(sizeof(translationtablecache) / sizeof(translationtablecache[0])); i++)
 				if (translationtablecache[i] && translationtablecache[i][color])
+				{
 					R_GenerateTranslationColormap(translationtablecache[i][color], CacheIndexToSkin(i), color);
-
-			skincolor_modified[color] = false;
+					R_UpdateTranslationRemaps(color, i);
+				}
 		}
 	}
 	else ret = NULL;

@@ -118,6 +118,19 @@ enum
 	TC_DEFAULT
 };
 
+// Amount of colors in the palette
+#define NUM_PALETTE_ENTRIES 256
+
+// Size of the translation colormap cache (skins + the TC_* specials)
+#define TT_CACHE_SIZE (MAXSKINS + 7)
+
+typedef struct colorcache_s
+{
+	UINT8 colors[NUM_PALETTE_ENTRIES];
+} colorcache_t;
+
+INT32 R_SkinTranslationToCacheIndex(INT32 translation);
+
 // Custom player skin translation
 // Initialize color translation tables, for player rendering etc.
 UINT8* R_GetTranslationColormap(INT32 skinnum, skincolornum_t color, UINT8 flags);

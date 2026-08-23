@@ -49,6 +49,7 @@
 #include "p_setup.h"
 #include "p_saveg.h"
 #include "r_main.h"
+#include "r_translation.h"
 #include "r_local.h"
 #include "s_sound.h"
 #include "st_stuff.h"
@@ -1559,6 +1560,8 @@ void D_SRB2Main(void)
 	//--------------------------------------------------------- CONSOLE
 	// setup loading screen
 	SCR_Startup();
+
+	PaletteRemap_Init();
 
 	HU_Init();
 

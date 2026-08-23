@@ -124,4 +124,7 @@ FUNCMATH UINT8 M_CountBits(UINT32 num, UINT8 size);
 #include "w_wad.h"
 extern char configfile[MAX_WADPATH];
 
+boolean M_StringToNumber(const char *input, int *out);
+boolean M_StringToDecimal(const char *input, double *out);
+
 #endif

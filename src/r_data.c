@@ -19,6 +19,7 @@
 #include "p_local.h"
 #include "m_misc.h"
 #include "r_data.h"
+#include "r_translation.h"
 #include "r_textures.h"
 #include "r_patch.h"
 #include "r_picformats.h"
@@ -1228,6 +1229,9 @@ static void R_Init8to16(void)
 //
 void R_InitData(void)
 {
+	CONS_Printf("R_LoadParsedTranslations()...\n");
+	R_LoadParsedTranslations();
+
 	if (highcolor)
 	{
 		CONS_Printf("InitHighColor...\n");

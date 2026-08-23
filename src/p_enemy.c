@@ -16,6 +16,7 @@
 #include "doomdef.h"
 #include "g_game.h"
 #include "p_local.h"
+#include "r_translation.h"
 #include "p_setup.h"
 #include "r_main.h"
 #include "r_state.h"
@@ -321,6 +322,7 @@ void A_DragonbomberSpawn(mobj_t *actor);
 void A_DragonWing(mobj_t *actor);
 void A_DragonSegment(mobj_t *actor);
 void A_ChangeHeight(mobj_t *actor);
+void A_SetTranslation(mobj_t *actor);
 
 //for p_enemy.c
 
@@ -9039,6 +9041,26 @@ void A_ChangeColorAbsolute(mobj_t *actor)
 //
 // var1 = if (var1 != 0), dye your target instead of yourself
 // var2 = color value to dye
+// Function: A_SetTranslation
+//
+// Description: Changes the translation of an actor.
+//
+// var1 = translation ID
+// var2 = unused
+//
+void A_SetTranslation(mobj_t *actor)
+{
+	INT32 locvar1 = var1;
+
+	if (LUA_CallAction(A_SETTRANSLATION, actor))
+		return;
+
+	if (R_TranslationIsValid(locvar1))
+		actor->translation = (UINT32)locvar1;
+	else
+		actor->translation = 0;
+}
+
 //
 void A_Dye(mobj_t *actor)
 {
