@@ -1352,6 +1352,9 @@ static void P_LoadSidedefs(UINT8 *data)
 		sd->offsetx_top = sd->offsetx_mid = sd->offsetx_bottom = 0;
 		sd->offsety_top = sd->offsety_mid = sd->offsety_bottom = 0;
 
+		sd->light = sd->light_top = sd->light_mid = sd->light_bottom = 0;
+		sd->lightabsolute = sd->lightabsolute_top = sd->lightabsolute_mid = sd->lightabsolute_bottom = false;
+
 		sd->scalex_top = sd->scalex_mid = sd->scalex_bottom = FRACUNIT;
 		sd->scaley_top = sd->scaley_mid = sd->scaley_bottom = FRACUNIT;
 
@@ -1925,6 +1928,22 @@ static void ParseTextmapSidedefParameter(UINT32 i, const char *param, const char
 		P_SetSidedefSector(i, atol(val));
 	else if (fastcmp(param, "repeatcnt"))
 		sides[i].repeatcnt = atol(val);
+	else if (fastcmp(param, "light"))
+		sides[i].light = atol(val);
+	else if (fastcmp(param, "light_top"))
+		sides[i].light_top = atol(val);
+	else if (fastcmp(param, "light_mid"))
+		sides[i].light_mid = atol(val);
+	else if (fastcmp(param, "light_bottom"))
+		sides[i].light_bottom = atol(val);
+	else if (fastcmp(param, "lightabsolute") && fastcmp("true", val))
+		sides[i].lightabsolute = true;
+	else if (fastcmp(param, "lightabsolute_top") && fastcmp("true", val))
+		sides[i].lightabsolute_top = true;
+	else if (fastcmp(param, "lightabsolute_mid") && fastcmp("true", val))
+		sides[i].lightabsolute_mid = true;
+	else if (fastcmp(param, "lightabsolute_bottom") && fastcmp("true", val))
+		sides[i].lightabsolute_bottom = true;
 }
 
 static void ParseTextmapLinedefParameter(UINT32 i, const char *param, const char *val)
@@ -2643,6 +2662,22 @@ static void P_WriteTextmap(void)
 			fprintf(f, "texturemiddle = \"%.*s\";\n", 8, textures[wsides[i].midtexture]->name);
 		if (wsides[i].repeatcnt != 0)
 			fprintf(f, "repeatcnt = %d;\n", wsides[i].repeatcnt);
+		if (wsides[i].light != 0)
+			fprintf(f, "light = %d;\n", wsides[i].light);
+		if (wsides[i].light_top != 0)
+			fprintf(f, "light_top = %d;\n", wsides[i].light_top);
+		if (wsides[i].light_mid != 0)
+			fprintf(f, "light_mid = %d;\n", wsides[i].light_mid);
+		if (wsides[i].light_bottom != 0)
+			fprintf(f, "light_bottom = %d;\n", wsides[i].light_bottom);
+		if (wsides[i].lightabsolute)
+			fprintf(f, "lightabsolute = true;\n");
+		if (wsides[i].lightabsolute_top)
+			fprintf(f, "lightabsolute_top = true;\n");
+		if (wsides[i].lightabsolute_mid)
+			fprintf(f, "lightabsolute_mid = true;\n");
+		if (wsides[i].lightabsolute_bottom)
+			fprintf(f, "lightabsolute_bottom = true;\n");
 		fprintf(f, "}\n");
 		fprintf(f, "\n");
 	}
@@ -3024,6 +3059,9 @@ static void P_LoadTextmap(void)
 		sd->rowoffset = 0;
 		sd->offsetx_top = sd->offsetx_mid = sd->offsetx_bottom = 0;
 		sd->offsety_top = sd->offsety_mid = sd->offsety_bottom = 0;
+
+		sd->light = sd->light_top = sd->light_mid = sd->light_bottom = 0;
+		sd->lightabsolute = sd->lightabsolute_top = sd->lightabsolute_mid = sd->lightabsolute_bottom = false;
 
 		sd->scalex_top = sd->scalex_mid = sd->scalex_bottom = FRACUNIT;
 		sd->scaley_top = sd->scaley_mid = sd->scaley_bottom = FRACUNIT;
