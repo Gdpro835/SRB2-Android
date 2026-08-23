@@ -105,7 +105,6 @@ void P_Thrust(mobj_t *mo, angle_t angle, fixed_t move)
 		mo->momy += FixedMul(move, FINESINE(angle));
 }
 
-#if 0
 void P_ThrustEvenIn2D(mobj_t *mo, angle_t angle, fixed_t move)
 {
 	angle >>= ANGLETOFINESHIFT;
@@ -144,7 +143,6 @@ void P_VectorInstaThrust(fixed_t xa, fixed_t xb, fixed_t xc, fixed_t ya, fixed_t
 	mo->momy = j;
 	mo->momz = k;
 }
-#endif
 
 //
 // P_InstaThrust
