@@ -25,6 +25,7 @@
 #include "i_system.h"
 #include "r_fps.h"
 #include "r_things.h"
+#include "r_translation.h"
 #include "r_patch.h"
 #include "r_patchrotation.h"
 #include "r_picformats.h"
@@ -847,6 +848,31 @@ INT16 *mceilingclip;
 fixed_t spryscale = 0, sprtopscreen = 0, sprbotscreen = 0;
 fixed_t windowtop = 0, windowbottom = 0;
 
+static UINT8 *flippedcol = NULL;
+static size_t flippedcolsize = 0;
+
+// Draws a column upside down, for negatively scaled walls and sprites
+void R_DrawFlippedPost(UINT8 *source, unsigned length, void (*drawcolfunc)(void))
+{
+	UINT8 *s, *d;
+
+	if (!length)
+		return;
+
+	if (!flippedcolsize || length > flippedcolsize)
+	{
+		flippedcolsize = length;
+		flippedcol = Z_Realloc(flippedcol, length, PU_STATIC, NULL);
+	}
+
+	dc_source = flippedcol;
+
+	for (s = (UINT8 *)source, d = flippedcol+length-1; d >= flippedcol; s++)
+		*d-- = *s;
+
+	drawcolfunc();
+}
+
 void R_DrawMaskedColumn(column_t *column)
 {
 	INT32 topscreen;
@@ -994,6 +1020,33 @@ UINT8 *R_GetSpriteTranslation(vissprite_t *vis)
 		else
 			return R_GetTranslationColormap(TC_BOSS, vis->color, GTC_CACHE);
 	}
+	else if (!(vis->cut & SC_PRECIP) && vis->mobj->translation != 0)
+	{
+		// Custom translation from a TRNSLATE lump
+		INT32 skinnum = TC_DEFAULT;
+		UINT8 *tr;
+
+		if (vis->color != SKINCOLOR_NONE)
+		{
+			if (vis->mobj->colorized)
+				skinnum = TC_RAINBOW;
+			else if (vis->mobj->player && vis->mobj->player->dashmode >= DASHMODE_THRESHOLD
+				&& (vis->mobj->player->charflags & SF_DASHMODE)
+				&& ((leveltime/2) & 1))
+				skinnum = (vis->mobj->player->charflags & SF_MACHINE) ? TC_DASHMODE : TC_RAINBOW;
+			else if (vis->mobj->skin && vis->mobj->sprite == SPR_PLAY)
+				skinnum = (INT32)(((skin_t *)vis->mobj->skin)->skinnum);
+		}
+
+		tr = R_GetTranslationRemap(vis->mobj->translation, vis->color, skinnum);
+		if (tr != NULL)
+			return tr;
+
+		if (vis->color != SKINCOLOR_NONE)
+			return R_GetTranslationColormap(skinnum, vis->color, GTC_CACHE);
+
+		return NULL;
+	}
 	else if (vis->color)
 	{
 		// New colormap stuff for skins Tails 06-07-2002
@@ -1011,7 +1064,7 @@ UINT8 *R_GetSpriteTranslation(vissprite_t *vis)
 		}
 		else if (!(vis->cut & SC_PRECIP) && vis->mobj->skin && vis->mobj->sprite == SPR_PLAY) // This thing is a player!
 		{
-			size_t skinnum = (skin_t*)vis->mobj->skin-skins;
+			size_t skinnum = ((skin_t *)vis->mobj->skin)->skinnum;
 			return R_GetTranslationColormap((INT32)skinnum, vis->color, GTC_CACHE);
 		}
 		else // Use the defaults
@@ -1021,6 +1074,11 @@ UINT8 *R_GetSpriteTranslation(vissprite_t *vis)
 		return R_GetTranslationColormap(TC_DEFAULT, SKINCOLOR_BLUE, GTC_CACHE);
 
 	return NULL;
+}
+
+transnum_t R_GetThingTransTable(fixed_t alpha, transnum_t transmap)
+{
+	return (20*(FRACUNIT - ((alpha * (10 - transmap))/10) - 1) + FRACUNIT) >> (FRACBITS+1);
 }
 
 //
@@ -1567,6 +1625,7 @@ static void R_ProjectDropShadow(mobj_t *thing, vissprite_t *vis, fixed_t scale, 
 	floordiff = abs((isflipped ? interp.height : 0) + interp.z - groundz);
 
 	trans = floordiff / (100*FRACUNIT) + 3;
+	trans = R_GetThingTransTable(thing->alpha, trans);
 	if (trans >= 9) return;
 
 	scalemul = FixedMul(FRACUNIT - floordiff/640, scale);
@@ -1890,12 +1949,12 @@ static void R_ProjectSprite(mobj_t *thing)
 	//Fab : 02-08-98: 'skin' override spritedef currently used for skin
 	if (thing->skin && thing->sprite == SPR_PLAY)
 	{
-		sprdef = &((skin_t *)thing->skin)->sprites[thing->sprite2];
+		sprdef = P_GetSkinSpritedef(((skin_t *)thing->skin), thing->sprite2);
 #ifdef ROTSPRITE
-		sprinfo = &((skin_t *)thing->skin)->sprinfo[thing->sprite2];
+		sprinfo = P_GetSkinSpriteInfo(((skin_t *)thing->skin), thing->sprite2);
 #endif
 		if (frame >= sprdef->numframes) {
-			CONS_Alert(CONS_ERROR, M_GetText("R_ProjectSprite: invalid skins[\"%s\"].sprites[%sSPR2_%s] frame %s\n"), ((skin_t *)thing->skin)->name, ((thing->sprite2 & FF_SPR2SUPER) ? "FF_SPR2SUPER|": ""), spr2names[(thing->sprite2 & ~FF_SPR2SUPER)], sizeu5(frame));
+			CONS_Alert(CONS_ERROR, M_GetText("R_ProjectSprite: invalid (*P_GetSkinSpritedef(skins[\"%s\"], %sSPR2_%s)) frame %s\n"), ((skin_t *)thing->skin)->name, ((thing->sprite2 & FF_SPR2SUPER) ? "FF_SPR2SUPER|": ""), spr2names[(thing->sprite2 & ~FF_SPR2SUPER)], sizeu5(frame));
 			thing->sprite = states[S_UNKNOWN].sprite;
 			thing->frame = states[S_UNKNOWN].frame;
 			sprdef = &sprites[thing->sprite];
@@ -2263,6 +2322,11 @@ static void R_ProjectSprite(mobj_t *thing)
 	}
 	else
 		trans = 0;
+
+	if ((oldthing->flags2 & MF2_LINKDRAW) && oldthing->tracer)
+		trans = R_GetThingTransTable(oldthing->tracer->alpha, trans);
+	else
+		trans = R_GetThingTransTable(oldthing->alpha, trans);
 
 	// Check if this sprite needs to be rendered like a shadow
 	shadowdraw = (!!(thing->renderflags & RF_SHADOWDRAW) && !(papersprite || splat));
@@ -3734,6 +3798,7 @@ boolean R_ThingVisible (mobj_t *thing)
 		(thing->sprite == SPR_NULL) || // Don't draw null-sprites
 		(thing->flags2 & MF2_DONTDRAW) || // Don't draw MF2_LINKDRAW objects
 		(thing->drawonlyforplayer && thing->drawonlyforplayer != viewplayer) || // Don't draw other players' personal objects
+		(!R_BlendLevelVisible(thing->blendmode, R_GetThingTransTable(thing->alpha, 0))) ||
 		(r_viewmobj && (
 		  (r_viewmobj == thing) || // Don't draw first-person players or awayviewmobj objects
 		  (r_viewmobj->player && r_viewmobj->player->followmobj == thing) || // Don't draw first-person players' followmobj

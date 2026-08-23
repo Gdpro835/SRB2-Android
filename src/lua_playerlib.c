@@ -192,6 +192,7 @@ enum player_e
 	player_marebegunat,
 	player_startedtime,
 	player_finishedtime,
+	player_lastmaretime,
 	player_lapbegunat,
 	player_lapstartedtime,
 	player_finishedspheres,
@@ -223,6 +224,7 @@ enum player_e
 	player_blocked,
 	player_jointime,
 	player_quittime,
+	player_lastinputtime,
 	player_ping,
 #ifdef HWRENDER
 	player_fovadd,
@@ -340,6 +342,7 @@ static const char *const player_opt[] = {
 	"marebegunat",
 	"startedtime",
 	"finishedtime",
+	"lastmaretime",
 	"lapbegunat",
 	"lapstartedtime",
 	"finishedspheres",
@@ -371,6 +374,7 @@ static const char *const player_opt[] = {
 	"blocked",
 	"jointime",
 	"quittime",
+	"lastinputtime",
 	"ping",
 #ifdef HWRENDER
 	"fovadd",
@@ -733,6 +737,9 @@ static int player_get(lua_State *L)
 	case player_finishedtime:
 		lua_pushinteger(L, plr->finishedtime);
 		break;
+	case player_lastmaretime:
+		lua_pushinteger(L, plr->lastmaretime);
+		break;
 	case player_lapbegunat:
 		lua_pushinteger(L, plr->lapbegunat);
 		break;
@@ -825,6 +832,9 @@ static int player_get(lua_State *L)
 		break;
 	case player_quittime:
 		lua_pushinteger(L, plr->quittime);
+		break;
+	case player_lastinputtime:
+		lua_pushinteger(L, plr->lastinputtime);
 		break;
 	case player_ping:
 		lua_pushinteger(L, playerpingtable[plr - players]);
@@ -1226,6 +1236,9 @@ static int player_set(lua_State *L)
 	case player_finishedtime:
 		plr->finishedtime = (tic_t)luaL_checkinteger(L, 3);
 		break;
+	case player_lastmaretime:
+		plr->lastmaretime = (tic_t)luaL_checkinteger(L, 3);
+		break;
 	case player_lapbegunat:
 		plr->lapbegunat = (tic_t)luaL_checkinteger(L, 3);
 		break;
@@ -1348,6 +1361,9 @@ static int player_set(lua_State *L)
 		break;
 	case player_quittime:
 		plr->quittime = (tic_t)luaL_checkinteger(L, 3);
+		break;
+	case player_lastinputtime:
+		plr->lastinputtime = (tic_t)luaL_checkinteger(L, 3);
 		break;
 #ifdef HWRENDER
 	case player_fovadd:

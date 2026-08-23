@@ -28,6 +28,7 @@
 #include "i_system.h"
 
 #include "r_data.h"
+#include "r_translation.h"
 #include "r_things.h" // for R_AddSpriteDefs
 #include "r_textures.h"
 #include "r_patch.h"
@@ -1013,6 +1014,9 @@ static void P_InitializeSector(sector_t *ss)
 
 	ss->extra_colormap = NULL;
 
+	ss->portal_floor = UINT32_MAX;
+	ss->portal_ceiling = UINT32_MAX;
+
 	ss->gravityptr = NULL;
 
 	ss->cullheight = NULL;
@@ -1052,6 +1056,9 @@ static void P_LoadSectors(UINT8 *data)
 
 		ss->floorxoffset = ss->flooryoffset = 0;
 		ss->ceilingxoffset = ss->ceilingyoffset = 0;
+
+		ss->floorxscale = ss->flooryscale = FRACUNIT;
+		ss->ceilingxscale = ss->ceilingyscale = FRACUNIT;
 
 		ss->floorangle = ss->ceilingangle = 0;
 
@@ -1105,6 +1112,8 @@ static void P_InitializeLinedef(line_t *ld)
 	ld->polyobj = NULL;
 
 	ld->callcount = 0;
+
+	ld->secportal = UINT32_MAX;
 
 	// cph 2006/09/30 - fix sidedef errors right away.
 	// cph 2002/07/20 - these errors are fatal if not fixed, so apply them
@@ -1345,8 +1354,14 @@ static void P_LoadSidedefs(UINT8 *data)
 		}
 		sd->rowoffset = SHORT(msd->rowoffset)<<FRACBITS;
 
-		sd->offsetx_top = sd->offsetx_mid = sd->offsetx_bot = 0;
-		sd->offsety_top = sd->offsety_mid = sd->offsety_bot = 0;
+		sd->offsetx_top = sd->offsetx_mid = sd->offsetx_bottom = 0;
+		sd->offsety_top = sd->offsety_mid = sd->offsety_bottom = 0;
+
+		sd->light = sd->light_top = sd->light_mid = sd->light_bottom = 0;
+		sd->lightabsolute = sd->lightabsolute_top = sd->lightabsolute_mid = sd->lightabsolute_bottom = false;
+
+		sd->scalex_top = sd->scalex_mid = sd->scalex_bottom = FRACUNIT;
+		sd->scaley_top = sd->scaley_mid = sd->scaley_bottom = FRACUNIT;
 
 		P_SetSidedefSector(i, SHORT(msd->sector));
 
@@ -1686,6 +1701,14 @@ static void ParseTextmapSectorParameter(UINT32 i, const char *param, const char 
 		sectors[i].ceilingxoffset = FLOAT_TO_FIXED(atof(val));
 	else if (fastcmp(param, "ypanningceiling"))
 		sectors[i].ceilingyoffset = FLOAT_TO_FIXED(atof(val));
+	else if (fastcmp(param, "xscalefloor"))
+		sectors[i].floorxscale = FLOAT_TO_FIXED(atof(val));
+	else if (fastcmp(param, "yscalefloor"))
+		sectors[i].flooryscale = FLOAT_TO_FIXED(atof(val));
+	else if (fastcmp(param, "xscaleceiling"))
+		sectors[i].ceilingxscale = FLOAT_TO_FIXED(atof(val));
+	else if (fastcmp(param, "yscaleceiling"))
+		sectors[i].ceilingyscale = FLOAT_TO_FIXED(atof(val));
 	else if (fastcmp(param, "rotationfloor"))
 		sectors[i].floorangle = FixedAngle(FLOAT_TO_FIXED(atof(val)));
 	else if (fastcmp(param, "rotationceiling"))
@@ -1881,13 +1904,25 @@ static void ParseTextmapSidedefParameter(UINT32 i, const char *param, const char
 	else if (fastcmp(param, "offsetx_mid"))
 		sides[i].offsetx_mid = atol(val) << FRACBITS;
 	else if (fastcmp(param, "offsetx_bottom"))
-		sides[i].offsetx_bot = atol(val) << FRACBITS;
+		sides[i].offsetx_bottom = atol(val) << FRACBITS;
 	else if (fastcmp(param, "offsety_top"))
 		sides[i].offsety_top = atol(val) << FRACBITS;
 	else if (fastcmp(param, "offsety_mid"))
 		sides[i].offsety_mid = atol(val) << FRACBITS;
 	else if (fastcmp(param, "offsety_bottom"))
-		sides[i].offsety_bot = atol(val) << FRACBITS;
+		sides[i].offsety_bottom = atol(val) << FRACBITS;
+	else if (fastcmp(param, "scalex_top"))
+		sides[i].scalex_top = FLOAT_TO_FIXED(atof(val));
+	else if (fastcmp(param, "scalex_mid"))
+		sides[i].scalex_mid = FLOAT_TO_FIXED(atof(val));
+	else if (fastcmp(param, "scalex_bottom"))
+		sides[i].scalex_bottom = FLOAT_TO_FIXED(atof(val));
+	else if (fastcmp(param, "scaley_top"))
+		sides[i].scaley_top = FLOAT_TO_FIXED(atof(val));
+	else if (fastcmp(param, "scaley_mid"))
+		sides[i].scaley_mid = FLOAT_TO_FIXED(atof(val));
+	else if (fastcmp(param, "scaley_bottom"))
+		sides[i].scaley_bottom = FLOAT_TO_FIXED(atof(val));
 	else if (fastcmp(param, "texturetop"))
 		sides[i].toptexture = R_TextureNumForName(val);
 	else if (fastcmp(param, "texturebottom"))
@@ -1898,6 +1933,22 @@ static void ParseTextmapSidedefParameter(UINT32 i, const char *param, const char
 		P_SetSidedefSector(i, atol(val));
 	else if (fastcmp(param, "repeatcnt"))
 		sides[i].repeatcnt = atol(val);
+	else if (fastcmp(param, "light"))
+		sides[i].light = atol(val);
+	else if (fastcmp(param, "light_top"))
+		sides[i].light_top = atol(val);
+	else if (fastcmp(param, "light_mid"))
+		sides[i].light_mid = atol(val);
+	else if (fastcmp(param, "light_bottom"))
+		sides[i].light_bottom = atol(val);
+	else if (fastcmp(param, "lightabsolute") && fastcmp("true", val))
+		sides[i].lightabsolute = true;
+	else if (fastcmp(param, "lightabsolute_top") && fastcmp("true", val))
+		sides[i].lightabsolute_top = true;
+	else if (fastcmp(param, "lightabsolute_mid") && fastcmp("true", val))
+		sides[i].lightabsolute_mid = true;
+	else if (fastcmp(param, "lightabsolute_bottom") && fastcmp("true", val))
+		sides[i].lightabsolute_bottom = true;
 }
 
 static void ParseTextmapLinedefParameter(UINT32 i, const char *param, const char *val)
@@ -2592,10 +2643,22 @@ static void P_WriteTextmap(void)
 			fprintf(f, "offsetx_mid = %d;\n", wsides[i].offsetx_mid >> FRACBITS);
 		if (wsides[i].offsety_mid != 0)
 			fprintf(f, "offsety_mid = %d;\n", wsides[i].offsety_mid >> FRACBITS);
-		if (wsides[i].offsetx_bot != 0)
-			fprintf(f, "offsetx_bottom = %d;\n", wsides[i].offsetx_bot >> FRACBITS);
-		if (wsides[i].offsety_bot != 0)
-			fprintf(f, "offsety_bottom = %d;\n", wsides[i].offsety_bot >> FRACBITS);
+		if (wsides[i].offsetx_bottom != 0)
+			fprintf(f, "offsetx_bottom = %d;\n", wsides[i].offsetx_bottom >> FRACBITS);
+		if (wsides[i].offsety_bottom != 0)
+			fprintf(f, "offsety_bottom = %d;\n", wsides[i].offsety_bottom >> FRACBITS);
+		if (wsides[i].scalex_top != FRACUNIT)
+			fprintf(f, "scalex_top = %f;\n", FIXED_TO_FLOAT(wsides[i].scalex_top));
+		if (wsides[i].scaley_top != FRACUNIT)
+			fprintf(f, "scaley_top = %f;\n", FIXED_TO_FLOAT(wsides[i].scaley_top));
+		if (wsides[i].scalex_mid != FRACUNIT)
+			fprintf(f, "scalex_mid = %f;\n", FIXED_TO_FLOAT(wsides[i].scalex_mid));
+		if (wsides[i].scaley_mid != FRACUNIT)
+			fprintf(f, "scaley_mid = %f;\n", FIXED_TO_FLOAT(wsides[i].scaley_mid));
+		if (wsides[i].scalex_bottom != FRACUNIT)
+			fprintf(f, "scalex_bottom = %f;\n", FIXED_TO_FLOAT(wsides[i].scalex_bottom));
+		if (wsides[i].scaley_bottom != FRACUNIT)
+			fprintf(f, "scaley_bottom = %f;\n", FIXED_TO_FLOAT(wsides[i].scaley_bottom));
 		if (wsides[i].toptexture > 0 && wsides[i].toptexture < numtextures)
 			fprintf(f, "texturetop = \"%.*s\";\n", 8, textures[wsides[i].toptexture]->name);
 		if (wsides[i].bottomtexture > 0 && wsides[i].bottomtexture < numtextures)
@@ -2604,6 +2667,22 @@ static void P_WriteTextmap(void)
 			fprintf(f, "texturemiddle = \"%.*s\";\n", 8, textures[wsides[i].midtexture]->name);
 		if (wsides[i].repeatcnt != 0)
 			fprintf(f, "repeatcnt = %d;\n", wsides[i].repeatcnt);
+		if (wsides[i].light != 0)
+			fprintf(f, "light = %d;\n", wsides[i].light);
+		if (wsides[i].light_top != 0)
+			fprintf(f, "light_top = %d;\n", wsides[i].light_top);
+		if (wsides[i].light_mid != 0)
+			fprintf(f, "light_mid = %d;\n", wsides[i].light_mid);
+		if (wsides[i].light_bottom != 0)
+			fprintf(f, "light_bottom = %d;\n", wsides[i].light_bottom);
+		if (wsides[i].lightabsolute)
+			fprintf(f, "lightabsolute = true;\n");
+		if (wsides[i].lightabsolute_top)
+			fprintf(f, "lightabsolute_top = true;\n");
+		if (wsides[i].lightabsolute_mid)
+			fprintf(f, "lightabsolute_mid = true;\n");
+		if (wsides[i].lightabsolute_bottom)
+			fprintf(f, "lightabsolute_bottom = true;\n");
 		fprintf(f, "}\n");
 		fprintf(f, "\n");
 	}
@@ -2651,6 +2730,14 @@ static void P_WriteTextmap(void)
 			fprintf(f, "xpanningceiling = %f;\n", FIXED_TO_FLOAT(tempsec.ceilingxoffset));
 		if (tempsec.ceilingyoffset != 0)
 			fprintf(f, "ypanningceiling = %f;\n", FIXED_TO_FLOAT(tempsec.ceilingyoffset));
+		if (tempsec.floorxscale != FRACUNIT)
+			fprintf(f, "xscalefloor = %f;\n", FIXED_TO_FLOAT(tempsec.floorxscale));
+		if (tempsec.flooryscale != FRACUNIT)
+			fprintf(f, "yscalefloor = %f;\n", FIXED_TO_FLOAT(tempsec.flooryscale));
+		if (tempsec.ceilingxscale != FRACUNIT)
+			fprintf(f, "xscaleceiling = %f;\n", FIXED_TO_FLOAT(tempsec.ceilingxscale));
+		if (tempsec.ceilingyscale != FRACUNIT)
+			fprintf(f, "yscaleceiling = %f;\n", FIXED_TO_FLOAT(tempsec.ceilingyscale));
 		if (wsectors[i].floorangle != 0)
 			fprintf(f, "rotationfloor = %f;\n", FIXED_TO_FLOAT(AngleFixed(wsectors[i].floorangle)));
 		if (wsectors[i].ceilingangle != 0)
@@ -2886,6 +2973,9 @@ static void P_LoadTextmap(void)
 		sc->floorxoffset = sc->flooryoffset = 0;
 		sc->ceilingxoffset = sc->ceilingyoffset = 0;
 
+		sc->floorxscale = sc->flooryscale = FRACUNIT;
+		sc->ceilingxscale = sc->ceilingyscale = FRACUNIT;
+
 		sc->floorangle = sc->ceilingangle = 0;
 
 		sc->floorlightlevel = sc->ceilinglightlevel = 0;
@@ -2972,8 +3062,14 @@ static void P_LoadTextmap(void)
 		// Defaults.
 		sd->textureoffset = 0;
 		sd->rowoffset = 0;
-		sd->offsetx_top = sd->offsetx_mid = sd->offsetx_bot = 0;
-		sd->offsety_top = sd->offsety_mid = sd->offsety_bot = 0;
+		sd->offsetx_top = sd->offsetx_mid = sd->offsetx_bottom = 0;
+		sd->offsety_top = sd->offsety_mid = sd->offsety_bottom = 0;
+
+		sd->light = sd->light_top = sd->light_mid = sd->light_bottom = 0;
+		sd->lightabsolute = sd->lightabsolute_top = sd->lightabsolute_mid = sd->lightabsolute_bottom = false;
+
+		sd->scalex_top = sd->scalex_mid = sd->scalex_bottom = FRACUNIT;
+		sd->scaley_top = sd->scaley_mid = sd->scaley_bottom = FRACUNIT;
 		sd->toptexture = R_TextureNumForName("-");
 		sd->midtexture = R_TextureNumForName("-");
 		sd->bottomtexture = R_TextureNumForName("-");
@@ -7191,19 +7287,19 @@ static void P_ForceCharacter(const char *forcecharskin)
 		if (splitscreen)
 		{
 			SetPlayerSkin(secondarydisplayplayer, forcecharskin);
-			if ((unsigned)cv_playercolor2.value != skins[players[secondarydisplayplayer].skin].prefcolor)
+			if ((unsigned)cv_playercolor2.value != skins[players[secondarydisplayplayer].skin]->prefcolor)
 			{
-				CV_StealthSetValue(&cv_playercolor2, skins[players[secondarydisplayplayer].skin].prefcolor);
-				players[secondarydisplayplayer].skincolor = skins[players[secondarydisplayplayer].skin].prefcolor;
+				CV_StealthSetValue(&cv_playercolor2, skins[players[secondarydisplayplayer].skin]->prefcolor);
+				players[secondarydisplayplayer].skincolor = skins[players[secondarydisplayplayer].skin]->prefcolor;
 			}
 		}
 
 		SetPlayerSkin(consoleplayer, forcecharskin);
 		// normal player colors in single player
-		if ((unsigned)cv_playercolor.value != skins[players[consoleplayer].skin].prefcolor)
+		if ((unsigned)cv_playercolor.value != skins[players[consoleplayer].skin]->prefcolor)
 		{
-			CV_StealthSetValue(&cv_playercolor, skins[players[consoleplayer].skin].prefcolor);
-			players[consoleplayer].skincolor = skins[players[consoleplayer].skin].prefcolor;
+			CV_StealthSetValue(&cv_playercolor, skins[players[consoleplayer].skin]->prefcolor);
+			players[consoleplayer].skincolor = skins[players[consoleplayer].skin]->prefcolor;
 		}
 	}
 }
@@ -7247,8 +7343,8 @@ static void P_LoadRecordGhosts(void)
 			if (cv_ghost_bestscore.value == 1 && players[consoleplayer].skin != i)
 				continue;
 
-			if (FIL_FileExists(va("%s-%s-score-best.lmp", gpath, skins[i].name)))
-				G_AddGhost(va("%s-%s-score-best.lmp", gpath, skins[i].name));
+			if (FIL_FileExists(va("%s-%s-score-best.lmp", gpath, skins[i]->name)))
+				G_AddGhost(va("%s-%s-score-best.lmp", gpath, skins[i]->name));
 		}
 	}
 
@@ -7260,8 +7356,8 @@ static void P_LoadRecordGhosts(void)
 			if (cv_ghost_besttime.value == 1 && players[consoleplayer].skin != i)
 				continue;
 
-			if (FIL_FileExists(va("%s-%s-time-best.lmp", gpath, skins[i].name)))
-				G_AddGhost(va("%s-%s-time-best.lmp", gpath, skins[i].name));
+			if (FIL_FileExists(va("%s-%s-time-best.lmp", gpath, skins[i]->name)))
+				G_AddGhost(va("%s-%s-time-best.lmp", gpath, skins[i]->name));
 		}
 	}
 
@@ -7273,8 +7369,8 @@ static void P_LoadRecordGhosts(void)
 			if (cv_ghost_bestrings.value == 1 && players[consoleplayer].skin != i)
 				continue;
 
-			if (FIL_FileExists(va("%s-%s-rings-best.lmp", gpath, skins[i].name)))
-				G_AddGhost(va("%s-%s-rings-best.lmp", gpath, skins[i].name));
+			if (FIL_FileExists(va("%s-%s-rings-best.lmp", gpath, skins[i]->name)))
+				G_AddGhost(va("%s-%s-rings-best.lmp", gpath, skins[i]->name));
 		}
 	}
 
@@ -7286,8 +7382,8 @@ static void P_LoadRecordGhosts(void)
 			if (cv_ghost_last.value == 1 && players[consoleplayer].skin != i)
 				continue;
 
-			if (FIL_FileExists(va("%s-%s-last.lmp", gpath, skins[i].name)))
-				G_AddGhost(va("%s-%s-last.lmp", gpath, skins[i].name));
+			if (FIL_FileExists(va("%s-%s-last.lmp", gpath, skins[i]->name)))
+				G_AddGhost(va("%s-%s-last.lmp", gpath, skins[i]->name));
 		}
 	}
 
@@ -7317,8 +7413,8 @@ static void P_LoadNightsGhosts(void)
 			if (cv_ghost_bestscore.value == 1 && players[consoleplayer].skin != i)
 				continue;
 
-			if (FIL_FileExists(va("%s-%s-score-best.lmp", gpath, skins[i].name)))
-				G_AddGhost(va("%s-%s-score-best.lmp", gpath, skins[i].name));
+			if (FIL_FileExists(va("%s-%s-score-best.lmp", gpath, skins[i]->name)))
+				G_AddGhost(va("%s-%s-score-best.lmp", gpath, skins[i]->name));
 		}
 	}
 
@@ -7330,8 +7426,8 @@ static void P_LoadNightsGhosts(void)
 			if (cv_ghost_besttime.value == 1 && players[consoleplayer].skin != i)
 				continue;
 
-			if (FIL_FileExists(va("%s-%s-time-best.lmp", gpath, skins[i].name)))
-				G_AddGhost(va("%s-%s-time-best.lmp", gpath, skins[i].name));
+			if (FIL_FileExists(va("%s-%s-time-best.lmp", gpath, skins[i]->name)))
+				G_AddGhost(va("%s-%s-time-best.lmp", gpath, skins[i]->name));
 		}
 	}
 
@@ -7343,8 +7439,8 @@ static void P_LoadNightsGhosts(void)
 			if (cv_ghost_last.value == 1 && players[consoleplayer].skin != i)
 				continue;
 
-			if (FIL_FileExists(va("%s-%s-last.lmp", gpath, skins[i].name)))
-				G_AddGhost(va("%s-%s-last.lmp", gpath, skins[i].name));
+			if (FIL_FileExists(va("%s-%s-last.lmp", gpath, skins[i]->name)))
+				G_AddGhost(va("%s-%s-last.lmp", gpath, skins[i]->name));
 		}
 	}
 
@@ -7817,6 +7913,7 @@ boolean P_LoadLevel(boolean fromnetsave, boolean reloadinggamestate)
 	R_InitializeLevelInterpolators();
 
 	P_InitThinkers();
+	P_InitSectorPortals();
 	R_InitMobjInterpolators();
 	P_InitCachedActions();
 
@@ -8175,6 +8272,8 @@ static boolean P_LoadAddon(UINT16 numlumps)
 	if (rendermode == render_opengl && (vid.glstate == VID_GL_LIBRARY_LOADED))
 		HWR_ClearAllTextures();
 #endif
+
+	R_LoadParsedTranslations();
 
 	//
 	// search for sprite replacements

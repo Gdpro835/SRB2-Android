@@ -48,11 +48,16 @@ typedef struct visplane_s
 	UINT16 padbottomstart, bottom[MAXVIDWIDTH], padbottomend;
 	INT32 high, low; // R_PlaneBounds should set these.
 
-	fixed_t xoffs, yoffs; // Scrolling flats.
+	INT64 xoffs, yoffs; // Scrolling flats.
+	fixed_t xscale, yscale;
+
+	sector_t *sector;
 
 	struct ffloor_s *ffloor;
 	polyobj_t *polyobj;
 	pslope_t *slope;
+
+	sectorportal_t *portalsector;
 } visplane_t;
 
 extern visplane_t *visplanes[MAXVISPLANES];
@@ -62,10 +67,6 @@ extern visplane_t *ceilingplane;
 // Visplane related.
 extern INT16 floorclip[MAXVIDWIDTH], ceilingclip[MAXVIDWIDTH];
 extern fixed_t frontscale[MAXVIDWIDTH], yslopetab[MAXVIDHEIGHT*16];
-extern fixed_t cachedheight[MAXVIDHEIGHT];
-extern fixed_t cacheddistance[MAXVIDHEIGHT];
-extern fixed_t cachedxstep[MAXVIDHEIGHT];
-extern fixed_t cachedystep[MAXVIDHEIGHT];
 
 extern fixed_t *yslope;
 extern lighttable_t **planezlight;
@@ -75,8 +76,10 @@ void R_ClearPlanes(void);
 void R_ClearFFloorClips (void);
 
 void R_DrawPlanes(void);
-visplane_t *R_FindPlane(fixed_t height, INT32 picnum, INT32 lightlevel, fixed_t xoff, fixed_t yoff, angle_t plangle,
-	extracolormap_t *planecolormap, ffloor_t *ffloor, polyobj_t *polyobj, pslope_t *slope);
+visplane_t *R_FindPlane(sector_t *sector, fixed_t height, INT32 picnum, INT32 lightlevel,
+	fixed_t xoff, fixed_t yoff, fixed_t xscale, fixed_t yscale,
+	angle_t plangle, extracolormap_t *planecolormap,
+	ffloor_t *ffloor, polyobj_t *polyobj, pslope_t *slope, sectorportal_t *portalsector);
 visplane_t *R_CheckPlane(visplane_t *pl, INT32 start, INT32 stop);
 void R_ExpandPlane(visplane_t *pl, INT32 start, INT32 stop);
 void R_PlaneBounds(visplane_t *plane);
@@ -116,5 +119,5 @@ typedef struct planemgr_s
 extern visffloor_t ffloor[MAXFFLOORS];
 extern INT32 numffloors;
 
-void Portal_AddSkyboxPortals (void);
+void Portal_AddPlanePortals (boolean add_skyboxes);
 #endif

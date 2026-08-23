@@ -17,6 +17,10 @@
 #ifndef __P_SPEC__
 #define __P_SPEC__
 
+extern size_t secportalcount;
+extern size_t secportalcapacity;
+extern sectorportal_t *secportals;
+
 extern mobj_t *skyboxmo[2]; // current skybox mobjs: 0 = viewpoint, 1 = centerpoint
 extern mobj_t *skyboxviewpnts[16]; // array of MT_SKYBOX viewpoint mobjs
 extern mobj_t *skyboxcenterpnts[16]; // array of MT_SKYBOX centerpoint mobjs
@@ -310,6 +314,19 @@ typedef enum
 
 typedef enum
 {
+	TMSECPORTAL_NORMAL = 0,
+	TMSECPORTAL_COPIED = 1,
+	TMSECPORTAL_SKYBOX = 2,
+	TMSECPORTAL_PLANE = 3,
+	TMSECPORTAL_HORIZON = 4,
+	TMSECPORTAL_COPY_PORTAL_TO_LINE = 5,
+	TMSECPORTAL_INTERACTIVE = 6, // unimplemented
+	TMSECPORTAL_SECTOR = 7,
+	TMSECPORTAL_OBJECT = 8
+} textmapsecportaltype_t;
+
+typedef enum
+{
 	TMT_ADD          = 0,
 	TMT_REMOVE       = 1,
 	TMT_REPLACEFIRST = 2,
@@ -520,6 +537,19 @@ INT32 P_FindMinSurroundingLight(sector_t *sector, INT32 max);
 
 void P_SetupSignExit(player_t *player);
 boolean P_IsFlagAtBase(mobjtype_t flag);
+
+void P_InitSectorPortals(void);
+UINT32 P_NewSectorPortal(void);
+
+boolean P_IsSectorPortalValid(sectorportal_t *secportal);
+
+sectorportal_t *P_SectorGetFloorPortal(sector_t *sector);
+sectorportal_t *P_SectorGetCeilingPortal(sector_t *sector);
+
+boolean P_SectorHasPortal(sector_t *sector);
+boolean P_SectorHasFloorPortal(sector_t *sector);
+boolean P_SectorHasCeilingPortal(sector_t *sector);
+boolean P_CompareSectorPortals(sectorportal_t *a, sectorportal_t *b);
 
 boolean P_IsMobjTouchingSectorPlane(mobj_t *mo, sector_t *sec);
 boolean P_IsMobjTouching3DFloor(mobj_t *mo, ffloor_t *ffloor, sector_t *sec);

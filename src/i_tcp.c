@@ -116,6 +116,8 @@
 	#endif
 	} mysockaddr_t;
 
+	#define IPV6_MULTICAST_ADDRESS "ff15::57e1:1a12"
+
 	#ifdef HAVE_MINIUPNPC
 		#ifdef STATIC_MINIUPNPC
 			#define STATICLIB
@@ -428,9 +430,26 @@ static const char *SOCK_GetBanMask(size_t ban)
 }
 
 #ifndef NONET
+#ifdef HAVE_IPV6
+static boolean SOCK_cmpipv6(mysockaddr_t *a, mysockaddr_t *b, UINT8 mask)
+{
+	UINT8 bitmask;
+	I_Assert(mask <= 128);
+	if (memcmp(&a->ip6.sin6_addr.s6_addr, &b->ip6.sin6_addr.s6_addr, mask / 8) != 0)
+		return false;
+	if (mask % 8 == 0)
+		return true;
+	bitmask = 255 << (mask % 8);
+	return (a->ip6.sin6_addr.s6_addr[mask / 8] & bitmask) == (b->ip6.sin6_addr.s6_addr[mask / 8] & bitmask);
+}
+#endif
+
 static boolean SOCK_cmpaddr(mysockaddr_t *a, mysockaddr_t *b, UINT8 mask)
 {
 	UINT32 bitmask = INADDR_NONE;
+
+	if (a->any.sa_family != b->any.sa_family)
+		return false;
 
 	if (mask && mask < 32)
 		bitmask = htonl((UINT32)(-1) << (32 - mask));
@@ -440,7 +459,7 @@ static boolean SOCK_cmpaddr(mysockaddr_t *a, mysockaddr_t *b, UINT8 mask)
 			&& (b->ip4.sin_port == 0 || (a->ip4.sin_port == b->ip4.sin_port));
 #ifdef HAVE_IPV6
 	else if (b->any.sa_family == AF_INET6)
-		return !memcmp(&a->ip6.sin6_addr, &b->ip6.sin6_addr, sizeof(b->ip6.sin6_addr))
+		return SOCK_cmpipv6(a, b, mask)
 			&& (b->ip6.sin6_port == 0 || (a->ip6.sin6_port == b->ip6.sin6_port));
 #endif
 	else
@@ -813,6 +832,24 @@ static SOCKET_TYPE UDP_Bind(int family, struct sockaddr *addr, socklen_t addrlen
 		return (SOCKET_TYPE)ERRSOCKET;
 	}
 
+#ifdef HAVE_IPV6
+	if (family == AF_INET6)
+	{
+		// we need to set all of this *after* binding to an address!
+		if (memcmp(&straddr.ip6.sin6_addr, &in6addr_any, sizeof(in6addr_any)) == 0) //IN6_ARE_ADDR_EQUAL
+		{
+			struct ipv6_mreq maddr;
+
+			inet_pton(AF_INET6, IPV6_MULTICAST_ADDRESS, &maddr.ipv6mr_multiaddr);
+			maddr.ipv6mr_interface = 0;
+			if (setsockopt(s, IPPROTO_IPV6, IPV6_JOIN_GROUP, (const char *)&maddr, sizeof(maddr)) != 0)
+			{
+				CONS_Alert(CONS_WARNING, M_GetText("Could not register multicast address\n"));
+			}
+		}
+	}
+#endif
+
 #ifdef FIONBIO
 	// make it non blocking
 	opt = true;
@@ -993,65 +1030,28 @@ static boolean UDP_Socket(void)
 	// ip + udp
 	packetheaderlength = 20 + 8; // for stats
 
-	hints.ai_family = AF_INET;
-	gaie = I_getaddrinfo("127.0.0.1", "0", &hints, &ai);
-	if (gaie == 0)
-	{
-		runp = ai;
-		while (runp != NULL && s < MAXNETNODES+1)
-		{
-			memcpy(&clientaddress[s], runp->ai_addr, runp->ai_addrlen);
-			s++;
-			runp = runp->ai_next;
-		}
-		I_freeaddrinfo(ai);
-	}
-	else
-	{
-		clientaddress[s].any.sa_family = AF_INET;
-		clientaddress[s].ip4.sin_port = htons(0);
-		clientaddress[s].ip4.sin_addr.s_addr = htonl(INADDR_LOOPBACK); //GetLocalAddress(); // my own ip
-		s++;
-	}
+	clientaddress[s].any.sa_family = AF_INET;
+	clientaddress[s].ip4.sin_port = htons(0);
+	clientaddress[s].ip4.sin_addr.s_addr = htonl(INADDR_LOOPBACK); //GetLocalAddress(); // my own ip
+	s++;
 
 	s = 0;
 
 	// setup broadcast adress to BROADCASTADDR entry
-	gaie = I_getaddrinfo("255.255.255.255", "0", &hints, &ai);
-	if (gaie == 0)
-	{
-		runp = ai;
-		while (runp != NULL && s < MAXNETNODES+1)
-		{
-			memcpy(&broadcastaddress[s], runp->ai_addr, runp->ai_addrlen);
-			s++;
-			runp = runp->ai_next;
-		}
-		I_freeaddrinfo(ai);
-	}
-	else
-	{
-		broadcastaddress[s].any.sa_family = AF_INET;
-		broadcastaddress[s].ip4.sin_port = htons(0);
-		broadcastaddress[s].ip4.sin_addr.s_addr = htonl(INADDR_BROADCAST);
-		s++;
-	}
+	broadcastaddress[s].any.sa_family = AF_INET;
+	broadcastaddress[s].ip4.sin_port = htons(atoi(DEFAULTPORT));
+	broadcastaddress[s].ip4.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+	s++;
+
 #ifdef HAVE_IPV6
 	if (b_ipv6)
 	{
-		hints.ai_family = AF_INET6;
-		gaie = I_getaddrinfo("ff02::1", "0", &hints, &ai);
-		if (gaie == 0)
-		{
-			runp = ai;
-			while (runp != NULL && s < MAXNETNODES+1)
-			{
-				memcpy(&broadcastaddress[s], runp->ai_addr, runp->ai_addrlen);
-				s++;
-				runp = runp->ai_next;
-			}
-			I_freeaddrinfo(ai);
-		}
+		broadcastaddress[s].any.sa_family = AF_INET6;
+		broadcastaddress[s].ip6.sin6_port = htons(atoi(DEFAULTPORT));
+		broadcastaddress[s].ip6.sin6_flowinfo = 0;
+		inet_pton(AF_INET6, IPV6_MULTICAST_ADDRESS, &broadcastaddress[s].ip6.sin6_addr);
+		broadcastaddress[s].ip6.sin6_scope_id = 0;
+		s++;
 	}
 #endif
 
@@ -1204,11 +1204,12 @@ static SINT8 SOCK_NetMakeNodewPort(const char *address, const char *port)
 		// test ip address of server
 		for (i = 0; i < mysocketses; ++i)
 		{
-			/* sendto tests that there is a network to this
-				address */
-			if (runp->ai_addr->sa_family == myfamily[i] &&
-					sendto(mysockets[i], NULL, 0, 0,
-						runp->ai_addr, runp->ai_addrlen) == 0)
+			/* 2.2.14 dropped the zero length sendto() probe that used to be
+			   here: on Android it can fail (no IPv6 route, or the system just
+			   refusing an empty datagram) even though the address is perfectly
+			   reachable, and a failure here made us stop looking at the
+			   remaining addresses entirely. */
+			if (runp->ai_addr->sa_family == myfamily[i])
 			{
 				memcpy(&clientaddress[newnode], runp->ai_addr, runp->ai_addrlen);
 				break;
@@ -1276,7 +1277,7 @@ static boolean SOCK_Ban(INT32 node)
 	else if (banned[numbans].any.sa_family == AF_INET6)
 	{
 		banned[numbans].ip6.sin6_port = 0;
-		bannedmask[numbans] = 128;
+		bannedmask[numbans] = 64;
 	}
 #endif
 	numbans++;
@@ -1317,7 +1318,7 @@ static boolean SOCK_SetBanAddress(const char *address, const char *mask)
 			bannedmask[numbans] = (UINT8)atoi(mask);
 #ifdef HAVE_IPV6
 		else if (runp->ai_family == AF_INET6)
-			bannedmask[numbans] = 128;
+			bannedmask[numbans] = 64;
 #endif
 		else
 			bannedmask[numbans] = 32;
@@ -1326,7 +1327,7 @@ static boolean SOCK_SetBanAddress(const char *address, const char *mask)
 			bannedmask[numbans] = 32;
 #ifdef HAVE_IPV6
 		else if (bannedmask[numbans] > 128 && runp->ai_family == AF_INET6)
-			bannedmask[numbans] = 128;
+			bannedmask[numbans] = 64;
 #endif
 		numbans++;
 		runp = runp->ai_next;
@@ -1439,6 +1440,16 @@ boolean I_InitTcpNetwork(void)
 	bannednode = SOCK_bannednode;
 
 	return ret;
+}
+
+boolean Net_IsNodeIPv6(INT32 node)
+{
+#if defined (NONET) || !defined (HAVE_IPV6)
+	(void)node;
+	return false;
+#else
+	return clientaddress[node].any.sa_family == AF_INET6;
+#endif
 }
 
 #include "i_addrinfo.c"

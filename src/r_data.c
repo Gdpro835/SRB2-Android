@@ -19,6 +19,7 @@
 #include "p_local.h"
 #include "m_misc.h"
 #include "r_data.h"
+#include "r_translation.h"
 #include "r_textures.h"
 #include "r_patch.h"
 #include "r_picformats.h"
@@ -694,6 +695,32 @@ static double deltas[256][3], map[256][3];
 
 static int RoundUp(double number);
 
+// Regenerates the light table of a colormap that already exists.
+// (2.2.14 splits R_CreateLightTable into alloc + generate; here we keep the
+// original allocation so that anything holding the pointer stays valid.)
+void R_UpdateLightTable(extracolormap_t *extra_colormap, boolean uselookup)
+{
+	lighttable_t *newtable;
+	lighttable_t *oldtable = extra_colormap->colormap;
+
+	(void)uselookup;
+
+	newtable = R_CreateLightTable(extra_colormap);
+
+	if (!newtable)
+		return;
+
+	if (oldtable)
+	{
+		// overwrite in place, then throw the temporary table away
+		M_Memcpy(oldtable, newtable, (256 * 34) + 10);
+		extra_colormap->colormap = oldtable;
+		Z_Free(newtable);
+	}
+	else
+		extra_colormap->colormap = newtable;
+}
+
 lighttable_t *R_CreateLightTable(extracolormap_t *extra_colormap)
 {
 	double cmaskr, cmaskg, cmaskb, cdestr, cdestg, cdestb;
@@ -1202,6 +1229,9 @@ static void R_Init8to16(void)
 //
 void R_InitData(void)
 {
+	CONS_Printf("R_LoadParsedTranslations()...\n");
+	R_LoadParsedTranslations();
+
 	if (highcolor)
 	{
 		CONS_Printf("InitHighColor...\n");

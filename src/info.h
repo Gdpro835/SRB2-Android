@@ -173,6 +173,7 @@ enum actionnum
 	A_CHANGECOLORRELATIVE,
 	A_CHANGECOLORABSOLUTE,
 	A_DYE,
+	A_SETTRANSLATION,
 	A_MOVERELATIVE,
 	A_MOVEABSOLUTE,
 	A_THRUST,
@@ -445,6 +446,7 @@ void A_SetRandomTics();
 void A_ChangeColorRelative();
 void A_ChangeColorAbsolute();
 void A_Dye();
+void A_SetTranslation();
 void A_MoveRelative();
 void A_MoveAbsolute();
 void A_Thrust();
@@ -798,6 +800,7 @@ typedef enum sprite
 	SPR_BMCH, // Big Mace Chain
 	SPR_SMCE, // Small Mace
 	SPR_BMCE, // Big Mace
+	SPR_BSPB, // Blue spring on a ball
 	SPR_YSPB, // Yellow spring on a ball
 	SPR_RSPB, // Red spring on a ball
 	SPR_SFBR, // Small Firebar
@@ -852,6 +855,8 @@ typedef enum sprite
 	SPR_XMS4, // Lamppost
 	SPR_XMS5, // Hanging Star
 	SPR_XMS6, // Mistletoe
+	SPR_SNTT, // Silver Shiver tree
+	SPR_SSTT, // Silver Shiver tree with snow
 	SPR_FHZI, // FHZ Ice
 	SPR_ROSY,
 
@@ -885,6 +890,8 @@ typedef enum sprite
 	// Misc Scenery
 	SPR_STLG, // Stalagmites
 	SPR_DBAL, // Disco
+	SPR_GINE, // Crystalline Heights tree
+	SPR_PPAL, // Pristine Shores palm trees
 
 	// Powerup Indicators
 	SPR_ARMA, // Armageddon Shield Orb
@@ -1071,14 +1078,16 @@ typedef enum sprite
 	SPR_GWLG,
 	SPR_GWLR,
 
+	// LJ Knuckles
+	SPR_OLDK,
+
 	SPR_FIRSTFREESLOT,
 	SPR_LASTFREESLOT = SPR_FIRSTFREESLOT + NUMSPRITEFREESLOTS - 1,
 	NUMSPRITES
 } spritenum_t;
 
-// Make sure to be conscious of FF_FRAMEMASK and the fact sprite2 is stored as a UINT8 whenever you change this table.
-// Currently, FF_FRAMEMASK is 0xff, or 255 - but the second half is used by FF_SPR2SUPER, so the limitation is 0x7f.
-// Since this is zero-based, there can be at most 128 different SPR2_'s without changing that.
+// Sprite2 is stored as a UINT16; the animation ID uses SPR2F_MASK (0x3FF) and
+// SPR2F_SUPER (0x400) marks the "super" variant, so there can be up to 1024 of these.
 typedef enum playersprite
 {
 	SPR2_STND = 0,
@@ -1158,7 +1167,7 @@ typedef enum playersprite
 	SPR2_XTRA, // stuff that isn't in-map - "would this ever need an md2 or variable length animation?"
 
 	SPR2_FIRSTFREESLOT,
-	SPR2_LASTFREESLOT = 0x7f,
+	SPR2_LASTFREESLOT = 1024, // Do not make higher than SPR2F_MASK (currently 0x3FF) plus one
 	NUMPLAYERSPRITES
 } playersprite_t;
 
@@ -2745,6 +2754,13 @@ typedef enum state
 	S_SMALLGRABCHAIN,
 	S_BIGGRABCHAIN,
 
+	// Blue spring on a ball
+	S_BLUESPRINGBALL,
+	S_BLUESPRINGBALL2,
+	S_BLUESPRINGBALL3,
+	S_BLUESPRINGBALL4,
+	S_BLUESPRINGBALL5,
+
 	// Yellow spring on a ball
 	S_YELLOWSPRINGBALL,
 	S_YELLOWSPRINGBALL2,
@@ -3049,6 +3065,10 @@ typedef enum state
 	S_LAMPPOST2,  // with snow
 	S_HANGSTAR,
 	S_MISTLETOE,
+	S_SSZTREE,
+	S_SSZTREE_BRANCH,
+	S_SSZTREE2,
+	S_SSZTREE2_BRANCH,
 	// Xmas GFZ bushes
 	S_XMASBLUEBERRYBUSH,
 	S_XMASBERRYBUSH,
@@ -3169,6 +3189,9 @@ typedef enum state
 	S_DBALL5,
 	S_DBALL6,
 	S_EGGSTATUE2,
+	S_GINE,
+	S_PPAL,
+	S_PPEL,
 
 	// Shield Orb
 	S_ARMA1,
@@ -4357,6 +4380,12 @@ typedef enum state
 
 	S_NAMECHECK,
 
+	// LJ Knuckles
+	S_OLDK_STND,
+	S_OLDK_DIE0,
+	S_OLDK_DIE1,
+	S_OLDK_DIE2,
+
 	S_FIRSTFREESLOT,
 	S_LASTFREESLOT = S_FIRSTFREESLOT + NUMSTATEFREESLOTS - 1,
 	NUMSTATES
@@ -4371,6 +4400,7 @@ typedef struct
 	INT32 var1;
 	INT32 var2;
 	statenum_t nextstate;
+	UINT16 sprite2;
 } state_t;
 
 extern state_t states[NUMSTATES];
@@ -4723,6 +4753,7 @@ typedef enum mobj_type
 	MT_BIGMACE, // Big Mace
 	MT_SMALLGRABCHAIN, // Small Grab Chain
 	MT_BIGGRABCHAIN, // Big Grab Chain
+	MT_BLUESPRINGBALL, // Blue spring on a ball
 	MT_YELLOWSPRINGBALL, // Yellow spring on a ball
 	MT_REDSPRINGBALL, // Red spring on a ball
 	MT_SMALLFIREBAR, // Small Firebar
@@ -4846,6 +4877,10 @@ typedef enum mobj_type
 	MT_LAMPPOST2,  // with snow
 	MT_HANGSTAR,
 	MT_MISTLETOE,
+	MT_SSZTREE,
+	MT_SSZTREE_BRANCH,
+	MT_SSZTREE2,
+	MT_SSZTREE2_BRANCH,
 	// Xmas GFZ bushes
 	MT_XMASBLUEBERRYBUSH,
 	MT_XMASBERRYBUSH,
@@ -4925,6 +4960,9 @@ typedef enum mobj_type
 	// Misc scenery
 	MT_DBALL,
 	MT_EGGSTATUE2,
+	MT_GINE,
+	MT_PPAL,
+	MT_PPEL,
 
 	// Powerup Indicators
 	MT_ELEMENTAL_ORB, // Elemental shield mobj
@@ -5152,6 +5190,8 @@ typedef enum mobj_type
 
 	MT_NAMECHECK,
 	MT_RAY, // General purpose mobj
+
+	MT_OLDK,
 
 	MT_FIRSTFREESLOT,
 	MT_LASTFREESLOT = MT_FIRSTFREESLOT + NUMMOBJFREESLOTS - 1,

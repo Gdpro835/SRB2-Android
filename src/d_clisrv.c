@@ -126,7 +126,16 @@ UINT8 hu_redownloadinggamestate = 0;
 // true when a player is connecting or disconnecting so that the gameplay has stopped in its tracks
 boolean hu_stopped = false;
 
-consvar_t cv_dedicatedidletime = CVAR_INIT ("dedicatedidletime", "10", CV_SAVE, CV_Unsigned, NULL);
+consvar_t cv_dedicatedidletime = CVAR_INIT ("dedicatedidletime", "10", CV_SAVE|CV_NETVAR, CV_Unsigned, NULL);
+
+static CV_PossibleValue_t idleaction_cons_t[] = {{1, "Kick"}, {2, "Spectate"}, {0, NULL}};
+consvar_t cv_idleaction = CVAR_INIT ("idleaction", "Spectate", CV_SAVE|CV_NETVAR, idleaction_cons_t, NULL);
+consvar_t cv_idletime = CVAR_INIT ("idletime", "3", CV_SAVE|CV_NETVAR, CV_Unsigned, NULL);
+
+/* Announced to clients in PT_SERVERINFO. The port does not download add-ons
+   over HTTP yet, but the field is part of the packet format as of 2.2.14 and
+   servers we host should be able to advertise a mirror all the same. */
+consvar_t cv_httpsource = CVAR_INIT ("http_source", "", CV_SAVE, NULL, NULL);
 
 UINT8 adminpassmd5[16];
 boolean adminpasswordset = false;
@@ -467,6 +476,19 @@ void SendKick(UINT8 playernum, UINT8 msg)
 	buf[0] = playernum;
 	buf[1] = msg;
 	SendNetXCmd(XD_KICK, &buf, 2);
+}
+
+void SendKicksForNode(SINT8 node, UINT8 msg)
+{
+	if (!nodeingame[node])
+		return;
+
+	if (nodetoplayer[node] != -1 && playeringame[(UINT8)nodetoplayer[node]])
+		SendKick((UINT8)nodetoplayer[node], msg);
+
+	if (nodetoplayer2[node] != -1 && nodetoplayer2[node] >= 0
+		&& playeringame[(UINT8)nodetoplayer2[node]])
+		SendKick((UINT8)nodetoplayer2[node], msg);
 }
 
 // -----------------------------------------------------------------
@@ -1438,6 +1460,8 @@ static void SV_SendServerInfo(INT32 node, tic_t servertime)
 
 	memset(netbuffer->u.serverinfo.maptitle, 0, sizeof netbuffer->u.serverinfo.maptitle);
 
+	memset(netbuffer->u.serverinfo.httpsource, 0, MAX_MIRROR_LENGTH);
+
 	if (mapheaderinfo[gamemap-1] && *mapheaderinfo[gamemap-1]->lvlttl)
 	{
 		char *read = mapheaderinfo[gamemap-1]->lvlttl, *writ = netbuffer->u.serverinfo.maptitle;
@@ -1463,6 +1487,19 @@ static void SV_SendServerInfo(INT32 node, tic_t servertime)
 
 	if (mapheaderinfo[gamemap-1])
 		netbuffer->u.serverinfo.actnum = mapheaderinfo[gamemap-1]->actnum;
+
+	{
+		const char *httpurl = cv_httpsource.string;
+		size_t mirror_length = strlen(httpurl);
+		if (mirror_length > MAX_MIRROR_LENGTH)
+			mirror_length = MAX_MIRROR_LENGTH;
+
+		if (snprintf(netbuffer->u.serverinfo.httpsource, mirror_length+1, "%s", httpurl) < 0)
+			// If there's an encoding error, send nothing, we accept that the above may be truncated
+			strncpy(netbuffer->u.serverinfo.httpsource, "", mirror_length);
+
+		netbuffer->u.serverinfo.httpsource[MAX_MIRROR_LENGTH-1] = '\0';
+	}
 
 	p = PutFileNeeded(0);
 
@@ -1946,6 +1983,10 @@ void CL_QueryServerList (msg_server_t *server_list)
 
 	for (i = 0; server_list[i].header.buffer[0]; i++)
 	{
+		if (cv_masterserver_debug.value)
+			CONS_Printf("Asking %s:%s for server info...\n",
+					server_list[i].ip, server_list[i].port);
+
 		// Make sure MS version matches our own, to
 		// thwart nefarious servers who lie to the MS.
 
@@ -1954,7 +1995,11 @@ void CL_QueryServerList (msg_server_t *server_list)
 		{
 			INT32 node = I_NetMakeNodewPort(server_list[i].ip, server_list[i].port);
 			if (node == -1)
+			{
+				CONS_Alert(CONS_WARNING, "Could not create a node for %s:%s\n",
+						server_list[i].ip, server_list[i].port);
 				break; // no more node free
+			}
 			SendAskInfo(node);
 			// Force close the connection so that servers can't eat
 			// up nodes forever if we never get a reply back from them
@@ -3663,6 +3708,10 @@ static void Got_KickCmd(UINT8 **p, INT32 playernum)
 			HU_AddChatText(va("\x82*%s has been kicked (%s)", player_names[pnum], reason), false);
 			kickreason = KR_KICK;
 			break;
+		case KICK_MSG_IDLE:
+			HU_AddChatText(va("\x82*%s has left the game (Inactive for too long)", player_names[pnum]), false);
+			kickreason = KR_TIMEOUT;
+			break;
 		case KICK_MSG_CUSTOM_BAN:
 			READSTRINGN(*p, reason, MAX_REASONLENGTH+1);
 			HU_AddChatText(va("\x82*%s has been banned (%s)", player_names[pnum], reason), false);
@@ -3683,6 +3732,8 @@ static void Got_KickCmd(UINT8 **p, INT32 playernum)
 			M_ShowESCMessage("Server closed connection\n(synch failure)\n");
 		else if (msg == KICK_MSG_PING_HIGH)
 			M_ShowESCMessage("Server closed connection\n(Broke ping limit)\n");
+		else if (msg == KICK_MSG_IDLE)
+			M_ShowESCMessage("Server closed connection\n(Inactive for too long)\n");
 		else if (msg == KICK_MSG_BANNED)
 			M_ShowESCMessage("You have been banned by the server\n\n");
 		else if (msg == KICK_MSG_CUSTOM_KICK)
@@ -3718,7 +3769,6 @@ static CV_PossibleValue_t netticbuffer_cons_t[] = {{0, "MIN"}, {3, "MAX"}, {0, N
 consvar_t cv_netticbuffer = CVAR_INIT ("netticbuffer", "1", CV_SAVE, netticbuffer_cons_t, NULL);
 
 consvar_t cv_allownewplayer = CVAR_INIT ("allowjoin", "On", CV_SAVE|CV_NETVAR|CV_ALLOWLUA, CV_OnOff, NULL);
-consvar_t cv_joinnextround = CVAR_INIT ("joinnextround", "Off", CV_SAVE|CV_NETVAR, CV_OnOff, NULL); /// \todo not done
 static CV_PossibleValue_t maxplayers_cons_t[] = {{2, "MIN"}, {32, "MAX"}, {0, NULL}};
 consvar_t cv_maxplayers = CVAR_INIT ("maxplayers", "8", CV_SAVE|CV_NETVAR|CV_ALLOWLUA, maxplayers_cons_t, NULL);
 static CV_PossibleValue_t joindelay_cons_t[] = {{1, "MIN"}, {3600, "MAX"}, {0, "Off"}, {0, NULL}};
@@ -3907,7 +3957,7 @@ void D_QuitNetGame(void)
 			if (nodeingame[i])
 				HSendPacket(i, true, 0, 0);
 #ifdef MASTERSERVER
-		if (serverrunning && ms_RoomId > 0)
+		if (serverrunning && cv_masterserver_room_id.value > 0)
 			UnregisterServer();
 #endif
 	}
@@ -3995,6 +4045,7 @@ static void Got_AddPlayer(UINT8 **p, INT32 playernum)
 
 	newplayer->jointime = 0;
 	newplayer->quittime = 0;
+	newplayer->lastinputtime = 0;
 
 	READSTRINGN(*p, player_names[newplayernum], MAXPLAYERNAME);
 
@@ -4173,7 +4224,7 @@ boolean SV_SpawnServer(void)
 		{
 			I_NetOpenSocket();
 #ifdef MASTERSERVER
-			if (ms_RoomId > 0)
+			if (cv_masterserver_room_id.value > 0)
 				RegisterServer();
 #endif
 		}
@@ -4364,8 +4415,6 @@ static void HandleConnect(SINT8 node)
 #endif
 			SV_AddNode(node);
 
-			if (cv_joinnextround.value && gameaction == ga_nothing)
-				G_SetGamestate(GS_WAITINGPLAYERS);
 			if (!SV_SendServerConfig(node))
 			{
 				G_SetGamestate(backupstate);
@@ -4411,14 +4460,10 @@ static void HandleShutdown(SINT8 node)
 	M_ShowESCMessage("Server has shutdown\n\n");
 }
 
-/** Called when a PT_NODETIMEOUT packet is received
-  *
-  * \param node The packet sender (should be the server)
-  *
+/** Called by the network code when the connection to the server times out.
   */
-static void HandleTimeout(SINT8 node)
+void CL_HandleTimeout(void)
 {
-	(void)node;
 	LUA_HookBool(false, HOOK(GameQuit));
 	D_QuitNetGame();
 	CL_Reset();
@@ -4682,7 +4727,6 @@ static void HandlePacketFromAwayNode(SINT8 node)
 				Net_CloseConnection(node); // nope
 			break;
 
-		case PT_NODETIMEOUT:
 		case PT_CLIENTQUIT:
 			if (server)
 				Net_CloseConnection(node);
@@ -4953,7 +4997,6 @@ static void HandlePacketFromPlayer(SINT8 node)
 				CONS_Printf(M_GetText("Password from %s failed.\n"), player_names[netconsole]);
 #endif
 			break;
-		case PT_NODETIMEOUT:
 		case PT_CLIENTQUIT:
 			if (client)
 				break;
@@ -4963,23 +5006,9 @@ static void HandlePacketFromPlayer(SINT8 node)
 			nodewaiting[node] = 0;
 			if (netconsole != -1 && playeringame[netconsole])
 			{
-				UINT8 kickmsg;
-
-				if (netbuffer->packettype == PT_NODETIMEOUT)
-					kickmsg = KICK_MSG_TIMEOUT;
-				else
-					kickmsg = KICK_MSG_PLAYER_QUIT;
-				kickmsg |= KICK_MSG_KEEP_BODY;
-
-				SendKick(netconsole, kickmsg);
+				SendKicksForNode(node, KICK_MSG_PLAYER_QUIT | KICK_MSG_KEEP_BODY);
 				nodetoplayer[node] = -1;
-
-				if (nodetoplayer2[node] != -1 && nodetoplayer2[node] >= 0
-					&& playeringame[(UINT8)nodetoplayer2[node]])
-				{
-					SendKick(nodetoplayer2[node], kickmsg);
-					nodetoplayer2[node] = -1;
-				}
+				nodetoplayer2[node] = -1;
 			}
 			Net_CloseConnection(node);
 			nodeingame[node] = false;
@@ -5143,11 +5172,6 @@ static void GetPackets(void)
 			if (netbuffer->packettype == PT_SERVERSHUTDOWN)
 			{
 				HandleShutdown(node);
-				continue;
-			}
-			if (netbuffer->packettype == PT_NODETIMEOUT)
-			{
-				HandleTimeout(node);
 				continue;
 			}
 		}
@@ -5760,6 +5784,48 @@ static void UpdatePingTable(void)
 	}
 }
 
+// Handle idle player timers
+static void IdleUpdate(void)
+{
+	INT32 i;
+
+	if (!server || !netgame)
+		return;
+
+	for (i = 0; i < MAXPLAYERS; i++)
+	{
+		if (playeringame[i] && playernode[i] != UINT8_MAX && !players[i].quittime && !players[i].spectator && !players[i].bot && gamestate == GS_LEVEL)
+		{
+			if (players[i].cmd.forwardmove || players[i].cmd.sidemove || players[i].cmd.buttons)
+				players[i].lastinputtime = 0;
+			else
+				players[i].lastinputtime++;
+
+			if (cv_idletime.value && !IsPlayerAdmin(i) && i != serverplayer && !(players[i].pflags & PF_FINISHED) && players[i].lastinputtime > (tic_t)cv_idletime.value * TICRATE * 60)
+			{
+				players[i].lastinputtime = 0;
+				if (cv_idleaction.value == 2 && G_GametypeHasSpectators())
+				{
+					changeteam_union NetPacket;
+					UINT16 usvalue;
+					NetPacket.value.l = NetPacket.value.b = 0;
+					NetPacket.packet.newteam = 0;
+					NetPacket.packet.playernum = i;
+					NetPacket.packet.verification = true; // This signals that it's a server change
+					usvalue = SHORT(NetPacket.value.l|NetPacket.value.b);
+					SendNetXCmd(XD_TEAMCHANGE, &usvalue, sizeof(usvalue));
+				}
+				else if (cv_idleaction.value == 1)
+				{
+					SendKick(i, KICK_MSG_IDLE | KICK_MSG_KEEP_BODY);
+				}
+			}
+		}
+		else
+			players[i].lastinputtime = 0;
+	}
+}
+
 // Handle timeouts to prevent definitive freezes from happenning
 static void HandleNodeTimeouts(void)
 {
@@ -5793,6 +5859,8 @@ void NetKeepAlive(void)
 	UpdatePingTable();
 
 	GetPackets();
+
+	IdleUpdate();
 
 #ifdef MASTERSERVER
 	MasterClient_Ticker();
@@ -5912,6 +5980,8 @@ void NetUpdate(void)
 		CL_SendClientCmd(); // send it
 
 	GetPackets(); // get packet from client or from server
+
+	IdleUpdate();
 
 	// client send the command after a receive of the server
 	// the server send before because in single player is beter

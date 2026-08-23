@@ -20,6 +20,7 @@
 #include "command.h"
 #include "i_threads.h"
 #include "mserv.h"
+#include "d_clisrv.h" // MAXSERVERNAME
 #include "m_menu.h"
 #include "ts_main.h" // touchscreenavailable
 #include "z_zone.h"
@@ -52,9 +53,12 @@ static void Command_Listserv_f(void);
 
 #endif/*MASTERSERVER*/
 
+static boolean ServerName_CanChange (const char*);
+
 static void Update_parameters (void);
 
 static void MasterServer_OnChange(void);
+static void RoomId_OnChange(void);
 
 static CV_PossibleValue_t masterserver_update_rate_cons_t[] = {
 	{2,  "MIN"},
@@ -63,11 +67,13 @@ static CV_PossibleValue_t masterserver_update_rate_cons_t[] = {
 };
 
 consvar_t cv_masterserver = CVAR_INIT ("masterserver", "https://ds.ms.srb2.org/MS/0", CV_SAVE|CV_CALL, NULL, MasterServer_OnChange);
-consvar_t cv_servername = CVAR_INIT ("servername", "SRB2 server", CV_SAVE|CV_NETVAR|CV_CALL|CV_NOINIT|CV_ALLOWLUA, NULL, Update_parameters);
+consvar_t cv_servername = CVAR_INIT_WITH_CALLBACKS ("servername", "SRB2 server", CV_SAVE|CV_NETVAR|CV_CALL|CV_NOINIT|CV_ALLOWLUA, NULL, Update_parameters, ServerName_CanChange);
 
 consvar_t cv_masterserver_update_rate = CVAR_INIT ("masterserver_update_rate", "15", CV_SAVE|CV_CALL|CV_NOINIT, masterserver_update_rate_cons_t, Update_parameters);
+CV_PossibleValue_t cv_masterserver_room_values[] = {{-1, "MIN"}, {999999999, "MAX"}, {0, NULL}};
+consvar_t cv_masterserver_room_id = CVAR_INIT ("masterserver_room_id", "-1", CV_CALL, cv_masterserver_room_values, RoomId_OnChange);
 
-INT16 ms_RoomId = -1;
+static INT16 ms_RoomId = -1;
 
 #if defined (MASTERSERVER) && defined (HAVE_THREADS)
 int           ms_QueryId;
@@ -93,9 +99,11 @@ void AddMServCommands(void)
 #ifndef NONET
 	CV_RegisterVar(&cv_masterserver);
 	CV_RegisterVar(&cv_masterserver_update_rate);
+	CV_RegisterVar(&cv_masterserver_room_id);
 	CV_RegisterVar(&cv_masterserver_timeout);
 	CV_RegisterVar(&cv_masterserver_debug);
 	CV_RegisterVar(&cv_masterserver_token);
+	CV_RegisterVar(&cv_masterserver_insecure);
 	CV_RegisterVar(&cv_servername);
 #ifdef MASTERSERVER
 	COM_AddCommand("listserv", Command_Listserv_f, 0);
@@ -460,7 +468,7 @@ void UnregisterServer(void)
 static boolean
 Online (void)
 {
-	return ( serverrunning && ms_RoomId > 0 );
+	return ( serverrunning && cv_masterserver_room_id.value > 0 );
 }
 
 static inline void SendPingToMasterServer(void)
@@ -513,11 +521,20 @@ Set_api (const char *api)
 
 #endif/*MASTERSERVER*/
 
+static boolean ServerName_CanChange(const char* newvalue)
+{
+	if (strlen(newvalue) < MAXSERVERNAME)
+		return true;
+
+	CONS_Alert(CONS_NOTICE, "The server name must be shorter than %d characters\n", MAXSERVERNAME);
+	return false;
+}
+
 static void
 Update_parameters (void)
 {
 #ifdef MASTERSERVER
-	int registered;
+	int registered = 0;
 	int delayed;
 
 	if (Online())
@@ -535,6 +552,19 @@ Update_parameters (void)
 
 		if (! delayed && registered)
 			UpdateServer();
+	}
+#endif/*MASTERSERVER*/
+}
+
+static void RoomId_OnChange(void)
+{
+#ifdef MASTERSERVER
+	if (ms_RoomId != cv_masterserver_room_id.value)
+	{
+		UnregisterServer();
+		ms_RoomId = cv_masterserver_room_id.value;
+		if (Online())
+			RegisterServer();
 	}
 #endif/*MASTERSERVER*/
 }

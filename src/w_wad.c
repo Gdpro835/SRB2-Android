@@ -49,6 +49,7 @@
 #include "doomtype.h"
 
 #include "w_wad.h"
+#include "r_translation.h"
 #include "z_zone.h"
 #include "fastcmp.h"
 
@@ -68,6 +69,7 @@
 #include "i_video.h" // rendermode
 #include "md5.h"
 #include "lua_script.h"
+#include "lua_hook.h"
 #ifdef SCANTHINGS
 #include "p_setup.h" // P_ScanThings
 #endif
@@ -1362,6 +1364,17 @@ static void W_ReadFileShaders(wadfile_t *wadfile)
 //
 // Can now load dehacked files (.soc)
 //
+
+static void W_LoadTrnslateLumps(UINT16 w)
+{
+	UINT16 lump = W_CheckNumForNamePwad("TRNSLATE", w, 0);
+	while (lump != INT16_MAX)
+	{
+		R_ParseTrnslate(w, lump);
+		lump = W_CheckNumForNamePwad("TRNSLATE", (UINT16)w, lump + 1);
+	}
+}
+
 UINT16 W_InitFile(const char *filename, fhandletype_t handletype, boolean mainfile, boolean startup)
 {
 	void *handle;
@@ -1528,6 +1541,12 @@ UINT16 W_InitFile(const char *filename, fhandletype_t handletype, boolean mainfi
 	default:
 		break;
 	}
+
+	W_LoadTrnslateLumps(numwadfiles - 1);
+
+	lua_lumploading++;
+	LUA_HookVoid(HOOK(AddonLoaded));
+	lua_lumploading--;
 
 	W_InvalidateLumpnumCache();
 	return wadfile->numlumps;
@@ -2041,7 +2060,13 @@ UINT16 W_InitFolder(const char *path, boolean mainfile, boolean startup)
 	numwadfiles++;
 
 	W_ReadFileShaders(wadfile);
+	W_LoadTrnslateLumps(numwadfiles - 1);
 	W_LoadDehackedLumpsPK3(numwadfiles - 1, mainfile);
+
+	lua_lumploading++;
+	LUA_HookVoid(HOOK(AddonLoaded));
+	lua_lumploading--;
+
 	W_InvalidateLumpnumCache();
 
 	return wadfile->numlumps;

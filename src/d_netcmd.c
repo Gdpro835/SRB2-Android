@@ -46,6 +46,10 @@
 #include "lua_script.h"
 #include "lua_hook.h"
 #include "m_cond.h"
+
+#ifdef HWRENDER
+#include "hardware/hw_main.h" // cv_glallowshaders
+#endif
 #include "m_anigif.h"
 #include "md5.h"
 #include "m_perfstats.h"
@@ -144,6 +148,12 @@ static void Command_Mapmd5_f(void);
 static void Command_Teamchange_f(void);
 static void Command_Teamchange2_f(void);
 static void Command_ServerTeamChange_f(void);
+
+#ifndef NONET
+static void Command_MutePlayer_f(void);
+static void Command_UnmutePlayer_f(void);
+#endif
+static void Got_MutePlayer(UINT8 **cp, INT32 playernum);
 
 static void Command_Clearscores_f(void);
 
@@ -443,7 +453,8 @@ const char *netxcmdnames[MAXNETXCMD - 1] =
 	"SUICIDE",
 	"LUACMD",
 	"LUAVAR",
-	"LUAFILE"
+	"LUAFILE",
+	"MUTEPLAYER"
 };
 
 // =========================================================================
@@ -480,6 +491,11 @@ void D_RegisterServerCommands(void)
 	RegisterNetXCmd(XD_RUNSOC, Got_RunSOCcmd);
 	RegisterNetXCmd(XD_LUACMD, Got_Luacmd);
 	RegisterNetXCmd(XD_LUAFILE, Got_LuaFile);
+	RegisterNetXCmd(XD_MUTEPLAYER, Got_MutePlayer);
+#ifndef NONET
+	COM_AddCommand("muteplayer", Command_MutePlayer_f, COM_LUA);
+	COM_AddCommand("unmuteplayer", Command_UnmutePlayer_f, COM_LUA);
+#endif
 
 	// Remote Administration
 	COM_AddCommand("password", Command_Changepassword_f, COM_LUA);
@@ -536,6 +552,10 @@ void D_RegisterServerCommands(void)
 
 	// for master server connection
 	AddMServCommands();
+
+#ifdef HWRENDER
+	CV_RegisterVar(&cv_glallowshaders);
+#endif
 
 	// p_mobj.c
 	CV_RegisterVar(&cv_itemrespawntime);
@@ -614,10 +634,12 @@ void D_RegisterServerCommands(void)
 	CV_RegisterVar(&cv_downloadspeed);
 #ifndef NONET
 	CV_RegisterVar(&cv_allownewplayer);
-	CV_RegisterVar(&cv_joinnextround);
 	CV_RegisterVar(&cv_showjoinaddress);
 	CV_RegisterVar(&cv_blamecfail);
 	CV_RegisterVar(&cv_dedicatedidletime);
+	CV_RegisterVar(&cv_idletime);
+	CV_RegisterVar(&cv_idleaction);
+	CV_RegisterVar(&cv_httpsource);
 #endif
 
 	COM_AddCommand("ping", Command_Ping_f, COM_LUA);
@@ -642,6 +664,10 @@ void D_RegisterServerCommands(void)
 	CV_RegisterVar(&cv_addons_folder);
 
 	CV_RegisterVar(&cv_dummyconsvar);
+
+	CV_RegisterVar(&cv_chatspamprotection);
+	CV_RegisterVar(&cv_chatspamspeed);
+	CV_RegisterVar(&cv_chatspamburst);
 }
 
 // =========================================================================
@@ -669,6 +695,9 @@ void D_RegisterClientCommands(void)
 	// Monster Iestyn (12/08/19): not sure where else I could have actually put this, but oh well
 	for (i = 0; i < MAXPLAYERS; i++)
 		sprintf(player_names[i], "Player %d", 1 + i);
+
+	CV_RegisterVar(&cv_tailspickup);
+	CV_RegisterVar(&cv_allowmlook);
 
 	if (dedicated)
 		return;
@@ -786,7 +815,6 @@ void D_RegisterClientCommands(void)
 	CV_RegisterVar(&cv_chatheight);
 	CV_RegisterVar(&cv_chatwidth);
 	CV_RegisterVar(&cv_chattime);
-	CV_RegisterVar(&cv_chatspamprotection);
 	CV_RegisterVar(&cv_chatbacktint);
 	CV_RegisterVar(&cv_consolechat);
 	CV_RegisterVar(&cv_chatnotifications);
@@ -1266,9 +1294,9 @@ static void ForceAllSkins(INT32 forcedskin)
 		if (!dedicated) // But don't do this for dedicated servers, of course.
 		{
 			if (i == consoleplayer)
-				CV_StealthSet(&cv_skin, skins[forcedskin].name);
+				CV_StealthSet(&cv_skin, skins[forcedskin]->name);
 			else if (i == secondarydisplayplayer)
-				CV_StealthSet(&cv_skin2, skins[forcedskin].name);
+				CV_StealthSet(&cv_skin2, skins[forcedskin]->name);
 		}
 	}
 }
@@ -1300,8 +1328,8 @@ static void SendNameAndColor(void)
 			CV_StealthSetValue(&cv_playercolor, players[consoleplayer].skincolor);
 		else if (skincolors[atoi(cv_playercolor.defaultvalue)].accessible)
 			CV_StealthSet(&cv_playercolor, cv_playercolor.defaultvalue);
-		else if (skins[players[consoleplayer].skin].prefcolor && skincolors[skins[players[consoleplayer].skin].prefcolor].accessible)
-			CV_StealthSetValue(&cv_playercolor, skins[players[consoleplayer].skin].prefcolor);
+		else if (skins[players[consoleplayer].skin]->prefcolor && skincolors[skins[players[consoleplayer].skin]->prefcolor].accessible)
+			CV_StealthSetValue(&cv_playercolor, skins[players[consoleplayer].skin]->prefcolor);
 		else {
 			UINT16 i = 0;
 			while (i<numskincolors && !skincolors[i].accessible) i++;
@@ -1311,7 +1339,7 @@ static void SendNameAndColor(void)
 
 	if (!strcmp(cv_playername.string, player_names[consoleplayer])
 	&& cv_playercolor.value == players[consoleplayer].skincolor
-	&& !strcmp(cv_skin.string, skins[players[consoleplayer].skin].name))
+	&& !strcmp(cv_skin.string, skins[players[consoleplayer].skin]->name))
 		return;
 
 	players[consoleplayer].availabilities = R_GetSkinAvailabilities();
@@ -1333,10 +1361,10 @@ static void SendNameAndColor(void)
 		if (players[consoleplayer].mo && !players[consoleplayer].powers[pw_dye])
 			players[consoleplayer].mo->color = players[consoleplayer].skincolor;
 
-		if (metalrecording)
+		if (metalrecording && numskins > 5)
 		{ // Starring Metal Sonic as themselves, obviously.
 			SetPlayerSkinByNum(consoleplayer, 5);
-			CV_StealthSet(&cv_skin, skins[5].name);
+			CV_StealthSet(&cv_skin, skins[5]->name);
 		}
 		else if ((foundskin = R_SkinAvailable(cv_skin.string)) != -1 && R_SkinUsable(consoleplayer, foundskin))
 		{
@@ -1347,11 +1375,11 @@ static void SendNameAndColor(void)
 			//notsame = (cv_skin.value != players[consoleplayer].skin);
 
 			SetPlayerSkin(consoleplayer, cv_skin.string);
-			CV_StealthSet(&cv_skin, skins[cv_skin.value].name);
+			CV_StealthSet(&cv_skin, skins[cv_skin.value]->name);
 
 			/*if (notsame)
 			{
-				CV_StealthSetValue(&cv_playercolor, skins[cv_skin.value].prefcolor);
+				CV_StealthSetValue(&cv_playercolor, skins[cv_skin.value]->prefcolor);
 
 				players[consoleplayer].skincolor = cv_playercolor.value % numskincolors;
 
@@ -1362,7 +1390,7 @@ static void SendNameAndColor(void)
 		else
 		{
 			cv_skin.value = players[consoleplayer].skin;
-			CV_StealthSet(&cv_skin, skins[players[consoleplayer].skin].name);
+			CV_StealthSet(&cv_skin, skins[players[consoleplayer].skin]->name);
 			// will always be same as current
 			SetPlayerSkin(consoleplayer, cv_skin.string);
 		}
@@ -1385,7 +1413,7 @@ static void SendNameAndColor(void)
 
 	// Don't change skin if the server doesn't want you to.
 	if (!CanChangeSkin(consoleplayer))
-		CV_StealthSet(&cv_skin, skins[players[consoleplayer].skin].name);
+		CV_StealthSet(&cv_skin, skins[players[consoleplayer].skin]->name);
 
 	// check if player has the skin loaded (cv_skin may have
 	// the name of a skin that was available in the previous game)
@@ -1393,7 +1421,7 @@ static void SendNameAndColor(void)
 	if ((cv_skin.value < 0) || !R_SkinUsable(consoleplayer, cv_skin.value))
 	{
 		INT32 defaultSkinNum = GetPlayerDefaultSkin(consoleplayer);
-		CV_StealthSet(&cv_skin, skins[defaultSkinNum].name);
+		CV_StealthSet(&cv_skin, skins[defaultSkinNum]->name);
 		cv_skin.value = defaultSkinNum;
 	}
 
@@ -1434,8 +1462,8 @@ static void SendNameAndColor2(void)
 			CV_StealthSetValue(&cv_playercolor2, players[secondplaya].skincolor);
 		else if (skincolors[atoi(cv_playercolor2.defaultvalue)].accessible)
 			CV_StealthSet(&cv_playercolor, cv_playercolor2.defaultvalue);
-		else if (skins[players[secondplaya].skin].prefcolor && skincolors[skins[players[secondplaya].skin].prefcolor].accessible)
-			CV_StealthSetValue(&cv_playercolor2, skins[players[secondplaya].skin].prefcolor);
+		else if (skins[players[secondplaya].skin]->prefcolor && skincolors[skins[players[secondplaya].skin]->prefcolor].accessible)
+			CV_StealthSetValue(&cv_playercolor2, skins[players[secondplaya].skin]->prefcolor);
 		else {
 			UINT16 i = 0;
 			while (i<numskincolors && !skincolors[i].accessible) i++;
@@ -1476,7 +1504,7 @@ static void SendNameAndColor2(void)
 			const INT32 forcedskin = cv_forceskin.value;
 
 			SetPlayerSkinByNum(secondplaya, forcedskin);
-			CV_StealthSet(&cv_skin2, skins[forcedskin].name);
+			CV_StealthSet(&cv_skin2, skins[forcedskin]->name);
 		}
 		else if ((foundskin = R_SkinAvailable(cv_skin2.string)) != -1 && R_SkinUsable(secondplaya, foundskin))
 		{
@@ -1487,11 +1515,11 @@ static void SendNameAndColor2(void)
 			//notsame = (cv_skin2.value != players[secondplaya].skin);
 
 			SetPlayerSkin(secondplaya, cv_skin2.string);
-			CV_StealthSet(&cv_skin2, skins[cv_skin2.value].name);
+			CV_StealthSet(&cv_skin2, skins[cv_skin2.value]->name);
 
 			/*if (notsame)
 			{
-				CV_StealthSetValue(&cv_playercolor2, skins[players[secondplaya].skin].prefcolor);
+				CV_StealthSetValue(&cv_playercolor2, skins[players[secondplaya].skin]->prefcolor);
 
 				players[secondplaya].skincolor = cv_playercolor2.value % numskincolors;
 
@@ -1502,7 +1530,7 @@ static void SendNameAndColor2(void)
 		else
 		{
 			cv_skin2.value = players[secondplaya].skin;
-			CV_StealthSet(&cv_skin2, skins[players[secondplaya].skin].name);
+			CV_StealthSet(&cv_skin2, skins[players[secondplaya].skin]->name);
 			// will always be same as current
 			SetPlayerSkin(secondplaya, cv_skin2.string);
 		}
@@ -1613,9 +1641,9 @@ static void Got_NameAndColor(UINT8 **cp, INT32 playernum)
 		SetPlayerSkinByNum(playernum, forcedskin);
 
 		if (playernum == consoleplayer)
-			CV_StealthSet(&cv_skin, skins[forcedskin].name);
+			CV_StealthSet(&cv_skin, skins[forcedskin]->name);
 		else if (playernum == secondarydisplayplayer)
-			CV_StealthSet(&cv_skin2, skins[forcedskin].name);
+			CV_StealthSet(&cv_skin2, skins[forcedskin]->name);
 	}
 	else
 		SetPlayerSkinByNum(playernum, skin);
@@ -2225,7 +2253,7 @@ static void Got_Mapcmd(UINT8 **cp, INT32 playernum)
 	if (modeattacking)
 	{
 		SetPlayerSkinByNum(0, cv_chooseskin.value-1);
-		players[0].skincolor = skins[players[0].skin].prefcolor;
+		players[0].skincolor = skins[players[0].skin]->prefcolor;
 		CV_StealthSetValue(&cv_playercolor, players[0].skincolor);
 	}
 
@@ -2394,6 +2422,93 @@ static void Got_RandomSeed(UINT8 **cp, INT32 playernum)
   * \sa XD_CLEARSCORES, Got_Clearscores
   * \author SSNTails <http://www.ssntails.org>
   */
+#ifndef NONET
+static void MutePlayer(boolean mute)
+{
+	UINT8 data[2];
+	if (!(server || (IsPlayerAdmin(consoleplayer))))
+	{
+		CONS_Printf(M_GetText("Only the server or a remote admin can use this.\n"));
+		return;
+	}
+
+	if (COM_Argc() < 2)
+	{
+		CONS_Printf(M_GetText("muteplayer <playername/playernum>: mute a player\n"));
+		return;
+	}
+
+	data[0] = nametonum(COM_Argv(1));
+	if (data[0] >= MAXPLAYERS || !playeringame[data[0]])
+	{
+		CONS_Alert(CONS_NOTICE, M_GetText("There is no player %u!\n"), (unsigned int)data[0]);
+		return;
+	}
+
+	if (players[data[0]].muted && mute)
+	{
+		CONS_Printf(M_GetText("%s is already muted!\n"), player_names[data[0]]);
+		return;
+	}
+	else if (!players[data[0]].muted && !mute)
+	{
+		CONS_Printf(M_GetText("%s is not muted!\n"), player_names[data[0]]);
+		return;
+	}
+
+	data[1] = mute;
+	SendNetXCmd(XD_MUTEPLAYER, &data, sizeof(data));
+}
+
+static void Command_MutePlayer_f(void)
+{
+	MutePlayer(true);
+}
+
+static void Command_UnmutePlayer_f(void)
+{
+	MutePlayer(false);
+}
+#endif // NONET
+
+static void Got_MutePlayer(UINT8 **cp, INT32 playernum)
+{
+	UINT8 player = READUINT8(*cp);
+	UINT8 muted = READUINT8(*cp);
+	if (playernum != serverplayer && !IsPlayerAdmin(playernum))
+	{
+		CONS_Alert(CONS_WARNING, M_GetText("Illegal mute received from player %s\n"), player_names[playernum]);
+		if (server)
+			SendKick(playernum, KICK_MSG_CON_FAIL | KICK_MSG_KEEP_BODY);
+		return;
+	}
+
+	if (player >= MAXPLAYERS || !playeringame[player])
+	{
+		CONS_Alert(CONS_WARNING, M_GetText("Illegal mute received from player %s\n"), player_names[playernum]);
+		if (server)
+			SendKick(playernum, KICK_MSG_CON_FAIL | KICK_MSG_KEEP_BODY);
+		return;
+	}
+
+	if (!players[player].muted && muted)
+	{
+		if (player == consoleplayer)
+			CONS_Printf(M_GetText("You have been muted.\n"));
+		else
+			CONS_Printf(M_GetText("%s has been muted.\n"), player_names[player]);
+	}
+	else if (players[player].muted && !muted)
+	{
+		if (player == consoleplayer)
+			CONS_Printf(M_GetText("You are no longer muted.\n"));
+		else
+			CONS_Printf(M_GetText("%s is no longer muted.\n"), player_names[player]);
+	}
+
+	players[player].muted = muted;
+}
+
 static void Command_Clearscores_f(void)
 {
 	if (!(server || (IsPlayerAdmin(consoleplayer))))
@@ -4881,7 +4996,7 @@ static void ForceSkin_OnChange(void)
 		CONS_Printf("The server has lifted the forced skin restrictions.\n");
 	else
 	{
-		CONS_Printf("The server is restricting all players to skin \"%s\".\n",skins[cv_forceskin.value].name);
+		CONS_Printf("The server is restricting all players to skin \"%s\".\n",skins[cv_forceskin.value]->name);
 		ForceAllSkins(cv_forceskin.value);
 	}
 }
@@ -4889,7 +5004,7 @@ static void ForceSkin_OnChange(void)
 //Allows the player's name to be changed if cv_mute is off.
 static void Name_OnChange(void)
 {
-	if (cv_mute.value && !(server || IsPlayerAdmin(consoleplayer)))
+	if ((cv_mute.value || players[consoleplayer].muted) && !(server || IsPlayerAdmin(consoleplayer)))
 	{
 		CONS_Alert(CONS_NOTICE, M_GetText("You may not change your name when chat is muted.\n"));
 		CV_StealthSet(&cv_playername, player_names[consoleplayer]);
@@ -4901,7 +5016,7 @@ static void Name_OnChange(void)
 
 static void Name2_OnChange(void)
 {
-	if (cv_mute.value) //Secondary player can't be admin.
+	if (cv_mute.value || players[consoleplayer].muted) //Secondary player can't be admin.
 	{
 		CONS_Alert(CONS_NOTICE, M_GetText("You may not change your name when chat is muted.\n"));
 		CV_StealthSet(&cv_playername2, player_names[secondarydisplayplayer]);
@@ -4922,7 +5037,7 @@ static void Skin_OnChange(void)
 	if (!(cv_debug || devparm) && !(multiplayer || netgame) // In single player.
 		&& (gamestate != GS_WAITINGPLAYERS)) // allows command line -warp x +skin y
 	{
-		CV_StealthSet(&cv_skin, skins[players[consoleplayer].skin].name);
+		CV_StealthSet(&cv_skin, skins[players[consoleplayer].skin]->name);
 		return;
 	}
 
@@ -4931,7 +5046,7 @@ static void Skin_OnChange(void)
 	else
 	{
 		CONS_Alert(CONS_NOTICE, M_GetText("You can't change your skin at the moment.\n"));
-		CV_StealthSet(&cv_skin, skins[players[consoleplayer].skin].name);
+		CV_StealthSet(&cv_skin, skins[players[consoleplayer].skin]->name);
 	}
 }
 
@@ -4950,7 +5065,7 @@ static void Skin2_OnChange(void)
 	else
 	{
 		CONS_Alert(CONS_NOTICE, M_GetText("You can't change your skin at the moment.\n"));
-		CV_StealthSet(&cv_skin2, skins[players[secondarydisplayplayer].skin].name);
+		CV_StealthSet(&cv_skin2, skins[players[secondarydisplayplayer].skin]->name);
 	}
 }
 
@@ -4968,7 +5083,7 @@ static void Color_OnChange(void)
 	{
 		if (!(cv_debug || devparm) && !(multiplayer || netgame)) // In single player.
 		{
-			CV_StealthSet(&cv_skin, skins[players[consoleplayer].skin].name);
+			CV_StealthSet(&cv_skin, skins[players[consoleplayer].skin]->name);
 			return;
 		}
 

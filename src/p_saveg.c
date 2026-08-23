@@ -21,6 +21,7 @@
 #include "p_local.h"
 #include "p_setup.h"
 #include "p_saveg.h"
+#include "hu_stuff.h" // spam_tokens, spam_tics
 #include "r_data.h"
 #include "r_fps.h"
 #include "r_textures.h"
@@ -48,6 +49,7 @@ UINT8 *save_p;
 #define ARCHIVEBLOCK_THINKERS 0x7F37037C
 #define ARCHIVEBLOCK_SPECIALS 0x7F228378
 #define ARCHIVEBLOCK_EMBLEMS  0x7F4A5445
+#define ARCHIVEBLOCK_SECPORTALS 0x7FBE34C9
 
 // Note: This cannot be bigger
 // than an UINT16
@@ -78,11 +80,11 @@ static inline void P_ArchivePlayer(void)
 
 	// Write skin names, so that loading skins in different orders
 	// doesn't change who the save file is for!
-	WRITESTRINGN(save_p, skins[player->skin].name, SKINNAMESIZE);
+	WRITESTRINGN(save_p, skins[player->skin]->name, SKINNAMESIZE);
 
 	if (botskin != 0)
 	{
-		WRITESTRINGN(save_p, skins[botskin-1].name, SKINNAMESIZE);
+		WRITESTRINGN(save_p, skins[botskin-1]->name, SKINNAMESIZE);
 	}
 	else
 	{
@@ -171,11 +173,12 @@ static void P_NetArchivePlayers(void)
 		WRITEUINT8(save_p, players[i].panim);
 		WRITEUINT8(save_p, players[i].stronganim);
 		WRITEUINT8(save_p, players[i].spectator);
+		WRITEUINT8(save_p, players[i].muted);
 
 		WRITEUINT16(save_p, players[i].flashpal);
 		WRITEUINT16(save_p, players[i].flashcount);
 
-		WRITEUINT8(save_p, players[i].skincolor);
+		WRITEUINT16(save_p, players[i].skincolor);
 		WRITEINT32(save_p, players[i].skin);
 		WRITEUINT32(save_p, players[i].availabilities);
 		WRITEUINT32(save_p, players[i].score);
@@ -261,6 +264,7 @@ static void P_NetArchivePlayers(void)
 		WRITEUINT8(save_p, players[i].marelap);
 		WRITEUINT8(save_p, players[i].marebonuslap);
 		WRITEUINT32(save_p, players[i].marebegunat);
+		WRITEUINT32(save_p, players[i].lastmaretime);
 		WRITEUINT32(save_p, players[i].startedtime);
 		WRITEUINT32(save_p, players[i].finishedtime);
 		WRITEUINT32(save_p, players[i].lapbegunat);
@@ -400,11 +404,12 @@ static void P_NetUnArchivePlayers(void)
 		players[i].panim = READUINT8(save_p);
 		players[i].stronganim = READUINT8(save_p);
 		players[i].spectator = READUINT8(save_p);
+		players[i].muted = READUINT8(save_p);
 
 		players[i].flashpal = READUINT16(save_p);
 		players[i].flashcount = READUINT16(save_p);
 
-		players[i].skincolor = READUINT8(save_p);
+		players[i].skincolor = READUINT16(save_p);
 		players[i].skin = READINT32(save_p);
 		players[i].availabilities = READUINT32(save_p);
 		players[i].score = READUINT32(save_p);
@@ -491,6 +496,7 @@ static void P_NetUnArchivePlayers(void)
 		players[i].marelap = READUINT8(save_p);
 		players[i].marebonuslap = READUINT8(save_p);
 		players[i].marebegunat = READUINT32(save_p);
+		players[i].lastmaretime = READUINT32(save_p);
 		players[i].startedtime = READUINT32(save_p);
 		players[i].finishedtime = READUINT32(save_p);
 		players[i].lapbegunat = READUINT32(save_p);
@@ -866,25 +872,61 @@ static void P_NetUnArchiveWaypoints(void)
 #define SD_DAMAGETYPE 0x01
 #define SD_TRIGGERTAG 0x02
 #define SD_TRIGGERER 0x04
-#define SD_GRAVITY   0x08
+#define SD_FXSCALE   0x08
+#define SD_FYSCALE   0x10
+#define SD_CXSCALE   0x20
+#define SD_CYSCALE   0x40
+#define SD_DIFF5     0x80
 
-#define LD_FLAG     0x01
-#define LD_SPECIAL  0x02
-#define LD_CLLCOUNT 0x04
-#define LD_S1TEXOFF 0x08
-#define LD_S1TOPTEX 0x10
-#define LD_S1BOTTEX 0x20
-#define LD_S1MIDTEX 0x40
-#define LD_DIFF2    0x80
+// diff5 flags
+#define SD_GRAVITY     0x01
+#define SD_FLOORPORTAL 0x02
+#define SD_CEILPORTAL  0x04
+
+// sidedef flags
+enum
+{
+	LD_SDTEXOFFX     = 1,
+	LD_SDTEXOFFY     = 1<<1,
+	LD_SDTOPTEX      = 1<<2,
+	LD_SDBOTTEX      = 1<<3,
+	LD_SDMIDTEX      = 1<<4,
+	LD_SDTOPOFFX     = 1<<5,
+	LD_SDTOPOFFY     = 1<<6,
+	LD_SDMIDOFFX     = 1<<7,
+	LD_SDMIDOFFY     = 1<<8,
+	LD_SDBOTOFFX     = 1<<9,
+	LD_SDBOTOFFY     = 1<<10,
+	LD_SDTOPSCALEX   = 1<<11,
+	LD_SDTOPSCALEY   = 1<<12,
+	LD_SDMIDSCALEX   = 1<<13,
+	LD_SDMIDSCALEY   = 1<<14,
+	LD_SDBOTSCALEX   = 1<<15,
+	LD_SDBOTSCALEY   = 1<<16,
+	LD_SDLIGHT       = 1<<17,
+	LD_SDTOPLIGHT    = 1<<18,
+	LD_SDMIDLIGHT    = 1<<19,
+	LD_SDBOTLIGHT    = 1<<20,
+	LD_SDREPEATCNT   = 1<<21,
+	LD_SDFLAGS       = 1<<22,       // unused by 2.2.15 as well
+	LD_SDLIGHTABS    = 1<<23,
+	LD_SDTOPLIGHTABS = 1<<24,
+	LD_SDMIDLIGHTABS = 1<<25,
+	LD_SDBOTLIGHTABS = 1<<26
+};
+
+#define LD_FLAG          0x01
+#define LD_SPECIAL       0x02
+#define LD_CLLCOUNT      0x04
+#define LD_ARGS          0x08
+#define LD_STRINGARGS    0x10
+#define LD_SIDE1         0x20
+#define LD_SIDE2         0x40
+#define LD_DIFF2         0x80
 
 // diff2 flags
-#define LD_S2TEXOFF      0x01
-#define LD_S2TOPTEX      0x02
-#define LD_S2BOTTEX      0x04
-#define LD_S2MIDTEX      0x08
-#define LD_ARGS          0x10
-#define LD_STRINGARGS    0x20
-#define LD_EXECUTORDELAY 0x40
+#define LD_EXECUTORDELAY 0x01
+#define LD_TRANSFPORTAL  0x02
 
 static boolean P_AreArgsEqual(const line_t *li, const line_t *spawnli)
 {
@@ -1005,11 +1047,11 @@ static void ArchiveSectors(void)
 	size_t i, j;
 	const sector_t *ss = sectors;
 	const sector_t *spawnss = spawnsectors;
-	UINT8 diff, diff2, diff3, diff4;
+	UINT8 diff, diff2, diff3, diff4, diff5;
 
 	for (i = 0; i < numsectors; i++, ss++, spawnss++)
 	{
-		diff = diff2 = diff3 = diff4 = 0;
+		diff = diff2 = diff3 = diff4 = diff5 = 0;
 		if (ss->floorheight != spawnss->floorheight)
 			diff |= SD_FLOORHT;
 		if (ss->ceilingheight != spawnss->ceilingheight)
@@ -1062,11 +1104,26 @@ static void ArchiveSectors(void)
 			diff4 |= SD_TRIGGERTAG;
 		if (ss->triggerer != spawnss->triggerer)
 			diff4 |= SD_TRIGGERER;
+		if (ss->floorxscale != spawnss->floorxscale)
+			diff4 |= SD_FXSCALE;
+		if (ss->flooryscale != spawnss->flooryscale)
+			diff4 |= SD_FYSCALE;
+		if (ss->ceilingxscale != spawnss->ceilingxscale)
+			diff4 |= SD_CXSCALE;
+		if (ss->ceilingyscale != spawnss->ceilingyscale)
+			diff4 |= SD_CYSCALE;
 		if (ss->gravity != spawnss->gravity)
-			diff4 |= SD_GRAVITY;
+			diff5 |= SD_GRAVITY;
+		if (ss->portal_floor != spawnss->portal_floor)
+			diff5 |= SD_FLOORPORTAL;
+		if (ss->portal_ceiling != spawnss->portal_ceiling)
+			diff5 |= SD_CEILPORTAL;
 
 		if (ss->ffloors && CheckFFloorDiff(ss))
 			diff |= SD_FFLOORS;
+
+		if (diff5)
+			diff4 |= SD_DIFF5;
 
 		if (diff4)
 			diff3 |= SD_DIFF4;
@@ -1079,7 +1136,7 @@ static void ArchiveSectors(void)
 
 		if (diff)
 		{
-			WRITEUINT16(save_p, i);
+			WRITEUINT32(save_p, i);
 			WRITEUINT8(save_p, diff);
 			if (diff & SD_DIFF2)
 				WRITEUINT8(save_p, diff2);
@@ -1087,6 +1144,8 @@ static void ArchiveSectors(void)
 				WRITEUINT8(save_p, diff3);
 			if (diff3 & SD_DIFF4)
 				WRITEUINT8(save_p, diff4);
+			if (diff4 & SD_DIFF5)
+				WRITEUINT8(save_p, diff5);
 			if (diff & SD_FLOORHT)
 				WRITEFIXED(save_p, ss->floorheight);
 			if (diff & SD_CEILHT)
@@ -1143,25 +1202,38 @@ static void ArchiveSectors(void)
 				WRITEINT16(save_p, ss->triggertag);
 			if (diff4 & SD_TRIGGERER)
 				WRITEUINT8(save_p, ss->triggerer);
-			if (diff4 & SD_GRAVITY)
+			if (diff4 & SD_FXSCALE)
+				WRITEFIXED(save_p, ss->floorxscale);
+			if (diff4 & SD_FYSCALE)
+				WRITEFIXED(save_p, ss->flooryscale);
+			if (diff4 & SD_CXSCALE)
+				WRITEFIXED(save_p, ss->ceilingxscale);
+			if (diff4 & SD_CYSCALE)
+				WRITEFIXED(save_p, ss->ceilingyscale);
+			if (diff5 & SD_GRAVITY)
 				WRITEFIXED(save_p, ss->gravity);
+			if (diff5 & SD_FLOORPORTAL)
+				WRITEUINT32(save_p, ss->portal_floor);
+			if (diff5 & SD_CEILPORTAL)
+				WRITEUINT32(save_p, ss->portal_ceiling);
 			if (diff & SD_FFLOORS)
 				ArchiveFFloors(ss);
 		}
 	}
 
-	WRITEUINT16(save_p, 0xffff);
+	WRITEUINT32(save_p, 0xffffffff);
 }
 
 static void UnArchiveSectors(void)
 {
-	UINT16 i, j;
-	UINT8 diff, diff2, diff3, diff4;
+	UINT32 i;
+	UINT16 j;
+	UINT8 diff, diff2, diff3, diff4, diff5;
 	for (;;)
 	{
-		i = READUINT16(save_p);
+		i = READUINT32(save_p);
 
-		if (i == 0xffff)
+		if (i == 0xffffffff)
 			break;
 
 		if (i > numsectors)
@@ -1180,6 +1252,11 @@ static void UnArchiveSectors(void)
 			diff4 = READUINT8(save_p);
 		else
 			diff4 = 0;
+
+		if (diff4 & SD_DIFF5)
+			diff5 = READUINT8(save_p);
+		else
+			diff5 = 0;
 
 		if (diff & SD_FLOORHT)
 			sectors[i].floorheight = READFIXED(save_p);
@@ -1263,12 +1340,199 @@ static void UnArchiveSectors(void)
 			sectors[i].triggertag = READINT16(save_p);
 		if (diff4 & SD_TRIGGERER)
 			sectors[i].triggerer = READUINT8(save_p);
-		if (diff4 & SD_GRAVITY)
+		if (diff4 & SD_FXSCALE)
+			sectors[i].floorxscale = READFIXED(save_p);
+		if (diff4 & SD_FYSCALE)
+			sectors[i].flooryscale = READFIXED(save_p);
+		if (diff4 & SD_CXSCALE)
+			sectors[i].ceilingxscale = READFIXED(save_p);
+		if (diff4 & SD_CYSCALE)
+			sectors[i].ceilingyscale = READFIXED(save_p);
+		if (diff5 & SD_GRAVITY)
 			sectors[i].gravity = READFIXED(save_p);
+		if (diff5 & SD_FLOORPORTAL)
+			sectors[i].portal_floor = READUINT32(save_p);
+		if (diff5 & SD_CEILPORTAL)
+			sectors[i].portal_ceiling = READUINT32(save_p);
 
 		if (diff & SD_FFLOORS)
 			UnArchiveFFloors(&sectors[i]);
 	}
+}
+
+static UINT32 GetSideDiff(const side_t *si, const side_t *spawnsi)
+{
+	UINT32 diff = 0;
+	if (si->textureoffset != spawnsi->textureoffset)
+		diff |= LD_SDTEXOFFX;
+	if (si->rowoffset != spawnsi->rowoffset)
+		diff |= LD_SDTEXOFFY;
+	//SoM: 4/1/2000: Some textures are colormaps. Don't worry about invalid textures.
+	if (si->toptexture != spawnsi->toptexture)
+		diff |= LD_SDTOPTEX;
+	if (si->bottomtexture != spawnsi->bottomtexture)
+		diff |= LD_SDBOTTEX;
+	if (si->midtexture != spawnsi->midtexture)
+		diff |= LD_SDMIDTEX;
+	if (si->offsetx_top != spawnsi->offsetx_top)
+		diff |= LD_SDTOPOFFX;
+	if (si->offsetx_mid != spawnsi->offsetx_mid)
+		diff |= LD_SDMIDOFFX;
+	if (si->offsetx_bottom != spawnsi->offsetx_bottom)
+		diff |= LD_SDBOTOFFX;
+	if (si->offsety_top != spawnsi->offsety_top)
+		diff |= LD_SDTOPOFFY;
+	if (si->offsety_mid != spawnsi->offsety_mid)
+		diff |= LD_SDMIDOFFY;
+	if (si->offsety_bottom != spawnsi->offsety_bottom)
+		diff |= LD_SDBOTOFFY;
+	if (si->scalex_top != spawnsi->scalex_top)
+		diff |= LD_SDTOPSCALEX;
+	if (si->scalex_mid != spawnsi->scalex_mid)
+		diff |= LD_SDMIDSCALEX;
+	if (si->scalex_bottom != spawnsi->scalex_bottom)
+		diff |= LD_SDBOTSCALEX;
+	if (si->scaley_top != spawnsi->scaley_top)
+		diff |= LD_SDTOPSCALEY;
+	if (si->scaley_mid != spawnsi->scaley_mid)
+		diff |= LD_SDMIDSCALEY;
+	if (si->scaley_bottom != spawnsi->scaley_bottom)
+		diff |= LD_SDBOTSCALEY;
+	if (si->repeatcnt != spawnsi->repeatcnt)
+		diff |= LD_SDREPEATCNT;
+	if (si->light != spawnsi->light)
+		diff |= LD_SDLIGHT;
+	if (si->light_top != spawnsi->light_top)
+		diff |= LD_SDTOPLIGHT;
+	if (si->light_mid != spawnsi->light_mid)
+		diff |= LD_SDMIDLIGHT;
+	if (si->light_bottom != spawnsi->light_bottom)
+		diff |= LD_SDBOTLIGHT;
+	if (si->lightabsolute != spawnsi->lightabsolute)
+		diff |= LD_SDLIGHTABS;
+	if (si->lightabsolute_top != spawnsi->lightabsolute_top)
+		diff |= LD_SDTOPLIGHTABS;
+	if (si->lightabsolute_mid != spawnsi->lightabsolute_mid)
+		diff |= LD_SDMIDLIGHTABS;
+	if (si->lightabsolute_bottom != spawnsi->lightabsolute_bottom)
+		diff |= LD_SDBOTLIGHTABS;
+	return diff;
+}
+
+static void ArchiveSide(const side_t *si, UINT32 diff)
+{
+	WRITEUINT32(save_p, diff);
+
+	if (diff & LD_SDTEXOFFX)
+		WRITEFIXED(save_p, si->textureoffset);
+	if (diff & LD_SDTEXOFFY)
+		WRITEFIXED(save_p, si->rowoffset);
+	if (diff & LD_SDTOPTEX)
+		WRITEINT32(save_p, si->toptexture);
+	if (diff & LD_SDBOTTEX)
+		WRITEINT32(save_p, si->bottomtexture);
+	if (diff & LD_SDMIDTEX)
+		WRITEINT32(save_p, si->midtexture);
+	if (diff & LD_SDTOPOFFX)
+		WRITEFIXED(save_p, si->offsetx_top);
+	if (diff & LD_SDMIDOFFX)
+		WRITEFIXED(save_p, si->offsetx_mid);
+	if (diff & LD_SDBOTOFFX)
+		WRITEFIXED(save_p, si->offsetx_bottom);
+	if (diff & LD_SDTOPOFFY)
+		WRITEFIXED(save_p, si->offsety_top);
+	if (diff & LD_SDMIDOFFY)
+		WRITEFIXED(save_p, si->offsety_mid);
+	if (diff & LD_SDBOTOFFY)
+		WRITEFIXED(save_p, si->offsety_bottom);
+	if (diff & LD_SDTOPSCALEX)
+		WRITEFIXED(save_p, si->scalex_top);
+	if (diff & LD_SDMIDSCALEX)
+		WRITEFIXED(save_p, si->scalex_mid);
+	if (diff & LD_SDBOTSCALEX)
+		WRITEFIXED(save_p, si->scalex_bottom);
+	if (diff & LD_SDTOPSCALEY)
+		WRITEFIXED(save_p, si->scaley_top);
+	if (diff & LD_SDMIDSCALEY)
+		WRITEFIXED(save_p, si->scaley_mid);
+	if (diff & LD_SDBOTSCALEY)
+		WRITEFIXED(save_p, si->scaley_bottom);
+	if (diff & LD_SDREPEATCNT)
+		WRITEINT16(save_p, si->repeatcnt);
+	if (diff & LD_SDLIGHT)
+		WRITEINT16(save_p, si->light);
+	if (diff & LD_SDTOPLIGHT)
+		WRITEINT16(save_p, si->light_top);
+	if (diff & LD_SDMIDLIGHT)
+		WRITEINT16(save_p, si->light_mid);
+	if (diff & LD_SDBOTLIGHT)
+		WRITEINT16(save_p, si->light_bottom);
+	if (diff & LD_SDLIGHTABS)
+		WRITEUINT8(save_p, si->lightabsolute);
+	if (diff & LD_SDTOPLIGHTABS)
+		WRITEUINT8(save_p, si->lightabsolute_top);
+	if (diff & LD_SDMIDLIGHTABS)
+		WRITEUINT8(save_p, si->lightabsolute_mid);
+	if (diff & LD_SDBOTLIGHTABS)
+		WRITEUINT8(save_p, si->lightabsolute_bottom);
+}
+
+static void UnArchiveSide(side_t *si)
+{
+	UINT32 diff = READUINT32(save_p);
+
+	if (diff & LD_SDTEXOFFX)
+		si->textureoffset = READFIXED(save_p);
+	if (diff & LD_SDTEXOFFY)
+		si->rowoffset = READFIXED(save_p);
+	if (diff & LD_SDTOPTEX)
+		si->toptexture = READINT32(save_p);
+	if (diff & LD_SDBOTTEX)
+		si->bottomtexture = READINT32(save_p);
+	if (diff & LD_SDMIDTEX)
+		si->midtexture = READINT32(save_p);
+	if (diff & LD_SDTOPOFFX)
+		si->offsetx_top = READFIXED(save_p);
+	if (diff & LD_SDMIDOFFX)
+		si->offsetx_mid = READFIXED(save_p);
+	if (diff & LD_SDBOTOFFX)
+		si->offsetx_bottom = READFIXED(save_p);
+	if (diff & LD_SDTOPOFFY)
+		si->offsety_top = READFIXED(save_p);
+	if (diff & LD_SDMIDOFFY)
+		si->offsety_mid = READFIXED(save_p);
+	if (diff & LD_SDBOTOFFY)
+		si->offsety_bottom = READFIXED(save_p);
+	if (diff & LD_SDTOPSCALEX)
+		si->scalex_top = READFIXED(save_p);
+	if (diff & LD_SDMIDSCALEX)
+		si->scalex_mid = READFIXED(save_p);
+	if (diff & LD_SDBOTSCALEX)
+		si->scalex_bottom = READFIXED(save_p);
+	if (diff & LD_SDTOPSCALEY)
+		si->scaley_top = READFIXED(save_p);
+	if (diff & LD_SDMIDSCALEY)
+		si->scaley_mid = READFIXED(save_p);
+	if (diff & LD_SDBOTSCALEY)
+		si->scaley_bottom = READFIXED(save_p);
+	if (diff & LD_SDREPEATCNT)
+		si->repeatcnt = READINT16(save_p);
+	if (diff & LD_SDLIGHT)
+		si->light = READINT16(save_p);
+	if (diff & LD_SDTOPLIGHT)
+		si->light_top = READINT16(save_p);
+	if (diff & LD_SDMIDLIGHT)
+		si->light_mid = READINT16(save_p);
+	if (diff & LD_SDBOTLIGHT)
+		si->light_bottom = READINT16(save_p);
+	if (diff & LD_SDLIGHTABS)
+		si->lightabsolute = READUINT8(save_p);
+	if (diff & LD_SDTOPLIGHTABS)
+		si->lightabsolute_top = READUINT8(save_p);
+	if (diff & LD_SDMIDLIGHTABS)
+		si->lightabsolute_mid = READUINT8(save_p);
+	if (diff & LD_SDBOTLIGHTABS)
+		si->lightabsolute_bottom = READUINT8(save_p);
 }
 
 static void ArchiveLines(void)
@@ -1276,13 +1540,14 @@ static void ArchiveLines(void)
 	size_t i;
 	const line_t *li = lines;
 	const line_t *spawnli = spawnlines;
-	const side_t *si;
-	const side_t *spawnsi;
-	UINT8 diff, diff2; // no diff3
+	UINT8 diff, diff2;
+	UINT32 side1diff;
+	UINT32 side2diff;
 
 	for (i = 0; i < numlines; i++, spawnli++, li++)
 	{
 		diff = diff2 = 0;
+		side1diff = side2diff = 0;
 
 		if (li->special != spawnli->special)
 			diff |= LD_SPECIAL;
@@ -1291,40 +1556,28 @@ static void ArchiveLines(void)
 			diff |= LD_CLLCOUNT;
 
 		if (!P_AreArgsEqual(li, spawnli))
-			diff2 |= LD_ARGS;
+			diff |= LD_ARGS;
 
 		if (!P_AreStringArgsEqual(li, spawnli))
-			diff2 |= LD_STRINGARGS;
+			diff |= LD_STRINGARGS;
 
 		if (li->executordelay != spawnli->executordelay)
 			diff2 |= LD_EXECUTORDELAY;
 
+		if (li->secportal != spawnli->secportal)
+			diff2 |= LD_TRANSFPORTAL;
+
 		if (li->sidenum[0] != 0xffff)
 		{
-			si = &sides[li->sidenum[0]];
-			spawnsi = &spawnsides[li->sidenum[0]];
-			if (si->textureoffset != spawnsi->textureoffset)
-				diff |= LD_S1TEXOFF;
-			//SoM: 4/1/2000: Some textures are colormaps. Don't worry about invalid textures.
-			if (si->toptexture != spawnsi->toptexture)
-				diff |= LD_S1TOPTEX;
-			if (si->bottomtexture != spawnsi->bottomtexture)
-				diff |= LD_S1BOTTEX;
-			if (si->midtexture != spawnsi->midtexture)
-				diff |= LD_S1MIDTEX;
+			side1diff = GetSideDiff(&sides[li->sidenum[0]], &spawnsides[li->sidenum[0]]);
+			if (side1diff)
+				diff |= LD_SIDE1;
 		}
 		if (li->sidenum[1] != 0xffff)
 		{
-			si = &sides[li->sidenum[1]];
-			spawnsi = &spawnsides[li->sidenum[1]];
-			if (si->textureoffset != spawnsi->textureoffset)
-				diff2 |= LD_S2TEXOFF;
-			if (si->toptexture != spawnsi->toptexture)
-				diff2 |= LD_S2TOPTEX;
-			if (si->bottomtexture != spawnsi->bottomtexture)
-				diff2 |= LD_S2BOTTEX;
-			if (si->midtexture != spawnsi->midtexture)
-				diff2 |= LD_S2MIDTEX;
+			side2diff = GetSideDiff(&sides[li->sidenum[1]], &spawnsides[li->sidenum[1]]);
+			if (side2diff)
+				diff |= LD_SIDE2;
 		}
 
 		if (diff2)
@@ -1332,7 +1585,7 @@ static void ArchiveLines(void)
 
 		if (diff)
 		{
-			WRITEINT16(save_p, i);
+			WRITEUINT32(save_p, i);
 			WRITEUINT8(save_p, diff);
 			if (diff & LD_DIFF2)
 				WRITEUINT8(save_p, diff2);
@@ -1342,33 +1595,13 @@ static void ArchiveLines(void)
 				WRITEINT16(save_p, li->special);
 			if (diff & LD_CLLCOUNT)
 				WRITEINT16(save_p, li->callcount);
-
-			si = &sides[li->sidenum[0]];
-			if (diff & LD_S1TEXOFF)
-				WRITEFIXED(save_p, si->textureoffset);
-			if (diff & LD_S1TOPTEX)
-				WRITEINT32(save_p, si->toptexture);
-			if (diff & LD_S1BOTTEX)
-				WRITEINT32(save_p, si->bottomtexture);
-			if (diff & LD_S1MIDTEX)
-				WRITEINT32(save_p, si->midtexture);
-
-			si = &sides[li->sidenum[1]];
-			if (diff2 & LD_S2TEXOFF)
-				WRITEFIXED(save_p, si->textureoffset);
-			if (diff2 & LD_S2TOPTEX)
-				WRITEINT32(save_p, si->toptexture);
-			if (diff2 & LD_S2BOTTEX)
-				WRITEINT32(save_p, si->bottomtexture);
-			if (diff2 & LD_S2MIDTEX)
-				WRITEINT32(save_p, si->midtexture);
-			if (diff2 & LD_ARGS)
+			if (diff & LD_ARGS)
 			{
 				UINT8 j;
 				for (j = 0; j < NUMLINEARGS; j++)
 					WRITEINT32(save_p, li->args[j]);
 			}
-			if (diff2 & LD_STRINGARGS)
+			if (diff & LD_STRINGARGS)
 			{
 				UINT8 j;
 				for (j = 0; j < NUMLINESTRINGARGS; j++)
@@ -1387,26 +1620,32 @@ static void ArchiveLines(void)
 						WRITECHAR(save_p, li->stringargs[j][k]);
 				}
 			}
+			if (diff & LD_SIDE1)
+				ArchiveSide(&sides[li->sidenum[0]], side1diff);
+			if (diff & LD_SIDE2)
+				ArchiveSide(&sides[li->sidenum[1]], side2diff);
 			if (diff2 & LD_EXECUTORDELAY)
 				WRITEINT32(save_p, li->executordelay);
+			if (diff2 & LD_TRANSFPORTAL)
+				WRITEUINT32(save_p, li->secportal);
 		}
 	}
-	WRITEUINT16(save_p, 0xffff);
+	WRITEUINT32(save_p, 0xffffffff);
 }
 
 static void UnArchiveLines(void)
 {
-	UINT16 i;
+	UINT32 i;
 	line_t *li;
-	side_t *si;
-	UINT8 diff, diff2; // no diff3
+	UINT8 diff, diff2;
 
 	for (;;)
 	{
-		i = READUINT16(save_p);
+		i = READUINT32(save_p);
 
-		if (i == 0xffff)
+		if (i == 0xffffffff)
 			break;
+
 		if (i > numlines)
 			I_Error("Invalid line number %u from server", i);
 
@@ -1424,33 +1663,13 @@ static void UnArchiveLines(void)
 			li->special = READINT16(save_p);
 		if (diff & LD_CLLCOUNT)
 			li->callcount = READINT16(save_p);
-
-		si = &sides[li->sidenum[0]];
-		if (diff & LD_S1TEXOFF)
-			si->textureoffset = READFIXED(save_p);
-		if (diff & LD_S1TOPTEX)
-			si->toptexture = READINT32(save_p);
-		if (diff & LD_S1BOTTEX)
-			si->bottomtexture = READINT32(save_p);
-		if (diff & LD_S1MIDTEX)
-			si->midtexture = READINT32(save_p);
-
-		si = &sides[li->sidenum[1]];
-		if (diff2 & LD_S2TEXOFF)
-			si->textureoffset = READFIXED(save_p);
-		if (diff2 & LD_S2TOPTEX)
-			si->toptexture = READINT32(save_p);
-		if (diff2 & LD_S2BOTTEX)
-			si->bottomtexture = READINT32(save_p);
-		if (diff2 & LD_S2MIDTEX)
-			si->midtexture = READINT32(save_p);
-		if (diff2 & LD_ARGS)
+		if (diff & LD_ARGS)
 		{
 			UINT8 j;
 			for (j = 0; j < NUMLINEARGS; j++)
 				li->args[j] = READINT32(save_p);
 		}
-		if (diff2 & LD_STRINGARGS)
+		if (diff & LD_STRINGARGS)
 		{
 			UINT8 j;
 			for (j = 0; j < NUMLINESTRINGARGS; j++)
@@ -1471,9 +1690,14 @@ static void UnArchiveLines(void)
 				li->stringargs[j][len] = '\0';
 			}
 		}
+		if (diff & LD_SIDE1)
+			UnArchiveSide(&sides[li->sidenum[0]]);
+		if (diff & LD_SIDE2)
+			UnArchiveSide(&sides[li->sidenum[1]]);
 		if (diff2 & LD_EXECUTORDELAY)
 			li->executordelay = READINT32(save_p);
-
+		if (diff2 & LD_TRANSFPORTAL)
+			li->secportal = READUINT32(save_p);
 	}
 }
 
@@ -1578,7 +1802,9 @@ typedef enum
 	MD2_FLOORSPRITESLOPE    = 1<<22,
 	MD2_DISPOFFSET          = 1<<23,
 	MD2_DRAWONLYFORPLAYER   = 1<<24,
-	MD2_DONTDRAWFORVIEWMOBJ = 1<<25
+	MD2_DONTDRAWFORVIEWMOBJ = 1<<25,
+	MD2_TRANSLATION         = 1<<26,
+	MD2_ALPHA               = 1<<27
 } mobj_diff2_t;
 
 typedef enum
@@ -1716,7 +1942,7 @@ static void SaveMobjThinker(const thinker_t *th, const UINT8 type)
 		diff |= MD_TICS;
 	if (mobj->sprite != mobj->state->sprite)
 		diff |= MD_SPRITE;
-	if (mobj->sprite == SPR_PLAY && mobj->sprite2 != (mobj->state->frame&FF_FRAMEMASK))
+	if (mobj->sprite == SPR_PLAY && mobj->sprite2 != P_GetStateSprite2(mobj->state))
 		diff |= MD_SPRITE;
 	if (mobj->frame != mobj->state->frame)
 		diff |= MD_FRAME;
@@ -1819,6 +2045,10 @@ static void SaveMobjThinker(const thinker_t *th, const UINT8 type)
 		diff2 |= MD2_DONTDRAWFORVIEWMOBJ;
 	if (mobj->dispoffset != mobj->info->dispoffset)
 		diff2 |= MD2_DISPOFFSET;
+	if (mobj->translation)
+		diff2 |= MD2_TRANSLATION;
+	if (mobj->alpha != FRACUNIT)
+		diff2 |= MD2_ALPHA;
 
 	if (diff2 != 0)
 		diff |= MD_MORE;
@@ -1898,7 +2128,7 @@ static void SaveMobjThinker(const thinker_t *th, const UINT8 type)
 	if (diff & MD_SPRITE) {
 		WRITEUINT16(save_p, mobj->sprite);
 		if (mobj->sprite == SPR_PLAY)
-			WRITEUINT8(save_p, mobj->sprite2);
+			WRITEUINT16(save_p, mobj->sprite2);
 	}
 	if (diff & MD_FRAME)
 	{
@@ -1942,7 +2172,7 @@ static void SaveMobjThinker(const thinker_t *th, const UINT8 type)
 	if (diff2 & MD2_CVMEM)
 		WRITEINT32(save_p, mobj->cvmem);
 	if (diff2 & MD2_SKIN)
-		WRITEUINT8(save_p, (UINT8)((skin_t *)mobj->skin - skins));
+		WRITEUINT8(save_p, (UINT8)(((skin_t *)mobj->skin)->skinnum));
 	if (diff2 & MD2_COLOR)
 		WRITEUINT16(save_p, mobj->color);
 	if (diff2 & MD2_EXTVAL1)
@@ -2000,6 +2230,10 @@ static void SaveMobjThinker(const thinker_t *th, const UINT8 type)
 		WRITEUINT32(save_p, mobj->dontdrawforviewmobj->mobjnum);
 	if (diff2 & MD2_DISPOFFSET)
 		WRITEINT32(save_p, mobj->dispoffset);
+	if (diff2 & MD2_TRANSLATION)
+		WRITEUINT16(save_p, mobj->translation);
+	if (diff2 & MD2_ALPHA)
+		WRITEFIXED(save_p, mobj->alpha);
 
 	WRITEUINT32(save_p, mobj->mobjnum);
 }
@@ -2926,12 +3160,12 @@ static thinker_t* LoadMobjThinker(actionf_p1 thinker)
 	if (diff & MD_SPRITE) {
 		mobj->sprite = READUINT16(save_p);
 		if (mobj->sprite == SPR_PLAY)
-			mobj->sprite2 = READUINT8(save_p);
+			mobj->sprite2 = READUINT16(save_p);
 	}
 	else {
 		mobj->sprite = mobj->state->sprite;
 		if (mobj->sprite == SPR_PLAY)
-			mobj->sprite2 = mobj->state->frame&FF_FRAMEMASK;
+			mobj->sprite2 = P_GetStateSprite2(mobj->state);
 	}
 	if (diff & MD_FRAME)
 	{
@@ -2996,7 +3230,7 @@ static thinker_t* LoadMobjThinker(actionf_p1 thinker)
 	if (diff2 & MD2_CVMEM)
 		mobj->cvmem = READINT32(save_p);
 	if (diff2 & MD2_SKIN)
-		mobj->skin = &skins[READUINT8(save_p)];
+		mobj->skin = skins[READUINT8(save_p)];
 	if (diff2 & MD2_COLOR)
 		mobj->color = READUINT16(save_p);
 	if (diff2 & MD2_EXTVAL1)
@@ -3062,6 +3296,14 @@ static thinker_t* LoadMobjThinker(actionf_p1 thinker)
 		mobj->dispoffset = READINT32(save_p);
 	else
 		mobj->dispoffset = mobj->info->dispoffset;
+	if (diff2 & MD2_TRANSLATION)
+		mobj->translation = READUINT16(save_p);
+	else
+		mobj->translation = 0;
+	if (diff2 & MD2_ALPHA)
+		mobj->alpha = READFIXED(save_p);
+	else
+		mobj->alpha = FRACUNIT;
 
 	if (diff & MD_REDFLAG)
 	{
@@ -4374,6 +4616,12 @@ static void P_NetArchiveMisc(boolean resending)
 		WRITEUINT8(save_p, 0x2f);
 	else
 		WRITEUINT8(save_p, 0x2e);
+
+	for (i = 0; i < MAXPLAYERS; i++)
+	{
+		WRITEUINT8(save_p, spam_tokens[i]);
+		WRITEUINT32(save_p, spam_tics[i]);
+	}
 }
 
 static inline boolean P_NetUnArchiveMisc(boolean reloading)
@@ -4470,6 +4718,12 @@ static inline boolean P_NetUnArchiveMisc(boolean reloading)
 	// Is it paused?
 	if (READUINT8(save_p) == 0x2f)
 		paused = true;
+
+	for (i = 0; i < MAXPLAYERS; i++)
+	{
+		spam_tokens[i] = READUINT8(save_p);
+		spam_tics[i] = READUINT32(save_p);
+	}
 
 	return true;
 }
@@ -4790,6 +5044,90 @@ void P_SaveGame(INT16 mapnum)
 	P_ArchiveLuabanksAndConsistency();
 }
 
+static void P_NetArchiveSectorPortals(void)
+{
+	size_t i;
+
+	WRITEUINT32(save_p, ARCHIVEBLOCK_SECPORTALS);
+
+	WRITEUINT32(save_p, (UINT32)secportalcount);
+
+	for (i = 0; i < secportalcount; i++)
+	{
+		UINT8 type = secportals[i].type;
+
+		WRITEUINT8(save_p, type);
+		WRITEUINT8(save_p, secportals[i].ceiling ? 1 : 0);
+		WRITEUINT32(save_p, SaveSector(secportals[i].target));
+
+		switch (type)
+		{
+		case SECPORTAL_LINE:
+			WRITEUINT32(save_p, SaveLine(secportals[i].line.start));
+			WRITEUINT32(save_p, SaveLine(secportals[i].line.dest));
+			break;
+		case SECPORTAL_PLANE:
+		case SECPORTAL_HORIZON:
+		case SECPORTAL_FLOOR:
+		case SECPORTAL_CEILING:
+			WRITEUINT32(save_p, SaveSector(secportals[i].sector));
+			break;
+		case SECPORTAL_OBJECT:
+			if (!P_MobjWasRemoved(secportals[i].mobj))
+				WRITEUINT32(save_p, SaveMobjnum(secportals[i].mobj));
+			else
+				WRITEUINT32(save_p, 0);
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+static void P_NetUnArchiveSectorPortals(void)
+{
+	UINT32 count, i;
+
+	if (READUINT32(save_p) != ARCHIVEBLOCK_SECPORTALS)
+		I_Error("Bad $$$.sav at archive block Secportals");
+
+	Z_Free(secportals);
+	P_InitSectorPortals();
+
+	count = READUINT32(save_p);
+
+	for (i = 0; i < count; i++)
+	{
+		UINT32 id = P_NewSectorPortal();
+
+		sectorportal_t *secportal = &secportals[id];
+
+		secportal->type = READUINT8(save_p);
+		secportal->ceiling = (READUINT8(save_p) != 0) ? true : false;
+		secportal->target = LoadSector(READUINT32(save_p));
+
+		switch (secportal->type)
+		{
+		case SECPORTAL_LINE:
+			secportal->line.start = LoadLine(READUINT32(save_p));
+			secportal->line.dest = LoadLine(READUINT32(save_p));
+			break;
+		case SECPORTAL_PLANE:
+		case SECPORTAL_HORIZON:
+		case SECPORTAL_FLOOR:
+		case SECPORTAL_CEILING:
+			secportal->sector = LoadSector(READUINT32(save_p));
+			break;
+		case SECPORTAL_OBJECT:
+			id = READUINT32(save_p);
+			secportal->mobj = (id == 0) ? NULL : P_FindNewPosition(id);
+			break;
+		default:
+			break;
+		}
+	}
+}
+
 void P_SaveNetGame(boolean resending)
 {
 	thinker_t *th;
@@ -4821,6 +5159,7 @@ void P_SaveNetGame(boolean resending)
 		P_NetArchiveSpecials();
 		P_NetArchiveColormaps();
 		P_NetArchiveWaypoints();
+		P_NetArchiveSectorPortals();
 	}
 	LUA_Archive();
 
@@ -4861,6 +5200,7 @@ boolean P_LoadNetGame(boolean reloading)
 		P_NetUnArchiveSpecials();
 		P_NetUnArchiveColormaps();
 		P_NetUnArchiveWaypoints();
+		P_NetUnArchiveSectorPortals();
 		P_RelinkPointers();
 		P_FinishMobjs();
 	}

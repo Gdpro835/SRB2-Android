@@ -2856,3 +2856,43 @@ boolean M_IsStringEmpty(const char *s)
 
 	return true;
 }
+
+// Converts a string to a number, returning false if the string is not a valid number
+boolean M_StringToNumber(const char *input, int *out)
+{
+	char *end_position = NULL;
+	int result;
+
+	errno = 0;
+
+	result = strtol(input, &end_position, 10);
+	if (end_position == input || *end_position != '\0')
+		return false;
+
+	if (errno == ERANGE)
+		return false;
+
+	*out = result;
+
+	return true;
+}
+
+// Converts a string to a decimal number, returning false if the string is not a valid number
+boolean M_StringToDecimal(const char *input, double *out)
+{
+	char *end_position = NULL;
+	double result;
+
+	errno = 0;
+
+	result = strtod(input, &end_position);
+	if (end_position == input || *end_position != '\0')
+		return false;
+
+	if (errno == ERANGE)
+		return false;
+
+	*out = result;
+
+	return true;
+}

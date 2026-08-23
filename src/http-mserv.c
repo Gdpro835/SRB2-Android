@@ -41,6 +41,10 @@ Documentation available here.
 #define Blame( ... ) \
 	CONS_Printf("\x85" __VA_ARGS__)
 
+#define PROTO_ANY 0
+#define PROTO_V4 1
+#define PROTO_V6 2
+
 static void MasterServer_Debug_OnChange (void);
 
 consvar_t cv_masterserver_timeout = CVAR_INIT
@@ -61,9 +65,21 @@ consvar_t cv_masterserver_token = CVAR_INIT
 		NULL
 );
 
+/* The libcurl shipped with the Android port is built without verbose strings,
+   so curl_easy_strerror only ever says "Error". Turning this on skips
+   certificate validation, which tells us whether a failure is a certificate
+   problem or something else entirely. It is a diagnostic, not a fix. */
+consvar_t cv_masterserver_insecure = CVAR_INIT
+(
+		"masterserver_insecure", "Off", CV_SAVE, CV_OnOff,
+		NULL
+);
+
 #ifdef MASTERSERVER
 
 static int hms_started;
+
+static boolean hms_allow_ipv6;
 
 static char *hms_api;
 #ifdef HAVE_THREADS
@@ -71,6 +87,9 @@ static I_mutex hms_api_mutex;
 #endif
 
 static char *hms_server_token;
+#ifndef NO_IPV6
+static char *hms_server_token_ipv6;
+#endif
 
 static char hms_useragent[512];
 
@@ -80,6 +99,7 @@ struct HMS_buffer
 	char *buffer;
 	int   needle;
 	int    end;
+	int   proto;
 };
 
 static void
@@ -132,88 +152,149 @@ HMS_on_read (char *s, size_t _1, size_t n, void *userdata)
 }
 
 #if defined(__ANDROID__)
-static char *hms_ca_bundle;
-static char *hms_cert_path;
+/*
+The Android build has no system-wide CA bundle that libcurl can read, so we
+ship one inside the APK and unpack it next to the game data. This used to be
+done from inside HMS_connect, which runs on the master server worker threads:
+va() and Z_StrDup() are not thread safe, and the bundle was re-read, MD5'd and
+rewritten on *every* request. Now it happens exactly once, under a mutex, and
+we fall back to the system certificate directory if anything goes wrong.
+*/
 
-static void
-HMS_get_cert (void)
+#define HMS_CA_BUNDLE_DIR "hms"
+#define HMS_CA_BUNDLE_NAME HMS_CA_BUNDLE_DIR PATHSEP "cert"
+
+/* Android keeps its trusted roots here, as individual hashed files. */
+#define HMS_SYSTEM_CA_PATH "/system/etc/security/cacerts"
+
+static char hms_cert_path[512];
+static boolean hms_cert_checked;
+static boolean hms_cert_usable;
+
+#ifdef HAVE_THREADS
+static I_mutex hms_cert_mutex;
+#endif
+
+static boolean
+HMS_unpack_ca_bundle (void)
 {
-	const char *dir = "hms";
-	const char *pem = "cert";
+	void *needed_ca;
+	void *saved_ca;
+	boolean ok;
 
-	if (! hms_ca_bundle)
-		hms_ca_bundle = Z_StrDup(va("%s"PATHSEP"%s", dir, pem));
-	if (! hms_cert_path)
-		hms_cert_path = Z_StrDup(va("%s"PATHSEP"%s", srb2path, hms_ca_bundle));
+	char dir[512];
 
-	I_mkdir(va("%s"PATHSEP"%s", srb2path, dir), 0755);
-}
+	snprintf(dir, sizeof dir, "%s"PATHSEP"%s", srb2path, HMS_CA_BUNDLE_DIR);
+	I_mkdir(dir, 0755);
 
-static void *
-HMS_open_ca_bundle (void)
-{
-	return File_Open(hms_ca_bundle, "rb", FILEHANDLE_SDL);
+	needed_ca = File_Open(HMS_CA_BUNDLE_NAME, "rb", FILEHANDLE_SDL);
+
+	if (! needed_ca)
+	{
+		CONS_Alert(CONS_WARNING, "HMS: '%s' is missing from the game data\n",
+				HMS_CA_BUNDLE_NAME);
+		return false;
+	}
+
+	CONS_Printf("HMS: saving CA bundle to '%s'... ", hms_cert_path);
+
+	ok = W_UnpackFile(hms_cert_path, needed_ca);
+
+	File_Close(needed_ca);
+
+	CONS_Printf("%s\n", ok ? "succeeded" : "failed");
+
+	if (! ok)
+		return false;
+
+	/* make sure curl will actually be able to read it back */
+	saved_ca = File_Open(hms_cert_path, "rb", FILEHANDLE_SDL);
+
+	if (! saved_ca)
+	{
+		CONS_Alert(CONS_WARNING, "HMS: the saved CA bundle cannot be reopened\n");
+		return false;
+	}
+
+	File_Seek(saved_ca, 0, SEEK_END);
+	CONS_Printf("HMS: CA bundle is %ld bytes\n", (long)File_Tell(saved_ca));
+
+	File_Close(saved_ca);
+
+	return true;
 }
 
 static void
 HMS_set_cert (CURL *curl)
 {
-	void *saved_ca = NULL;
-	void *needed_ca = NULL;
-
-	boolean should_unpack = false;
-
-	HMS_get_cert();
-
-	if ((saved_ca = File_Open(hms_cert_path, "rb", FILEHANDLE_SDL)) == NULL)
+#ifdef HAVE_THREADS
+	I_lock_mutex(&hms_cert_mutex);
+#endif
 	{
-		needed_ca = HMS_open_ca_bundle();
-		should_unpack = true;
+		if (! hms_cert_checked)
+		{
+			hms_cert_checked = true;
+
+			snprintf(hms_cert_path, sizeof hms_cert_path,
+					"%s"PATHSEP"%s", srb2path, HMS_CA_BUNDLE_NAME);
+
+			hms_cert_usable = HMS_unpack_ca_bundle();
+
+			if (! hms_cert_usable)
+			{
+				CONS_Alert(CONS_WARNING,
+						"HMS: falling back to the system certificate store ('%s')\n",
+						HMS_SYSTEM_CA_PATH);
+			}
+		}
 	}
+#ifdef HAVE_THREADS
+	I_unlock_mutex(hms_cert_mutex);
+#endif
+
+	if (hms_cert_usable)
+		curl_easy_setopt(curl, CURLOPT_CAINFO, hms_cert_path);
 	else
-	{
-		needed_ca = HMS_open_ca_bundle();
-
-#ifndef NOMD5
-		UINT8 saved_md5[16];
-		UINT8 needed_md5[16];
-
-		memset(saved_md5, 0x00, 16);
-		memset(needed_md5, 0x00, 16);
-
-		int statusA = md5_stream_whandle(saved_ca, saved_md5);
-		int statusB = md5_stream_whandle(needed_ca, needed_md5);
-
-		if (statusA == 0 && statusB == 0 && memcmp(saved_md5, needed_md5, 16) != 0)
-#endif
-		{
-			should_unpack = true;
-		}
-
-		File_Close(saved_ca);
-	}
-
-	if (needed_ca)
-	{
-		if (should_unpack)
-		{
-			CONS_Printf("HMS: saving CA bundle '%s'... ", hms_ca_bundle);
-
-			if (W_UnpackFile(hms_cert_path, needed_ca))
-				CONS_Printf("succeeded\n");
-			else
-				CONS_Printf("failed\n");
-		}
-
-		File_Close(needed_ca);
-	}
-
-	curl_easy_setopt(curl, CURLOPT_CAINFO, hms_cert_path);
+		curl_easy_setopt(curl, CURLOPT_CAPATH, HMS_SYSTEM_CA_PATH);
 }
+
 #endif
 
-static struct HMS_buffer *
-HMS_connect (const char *format, ...)
+/* libcurl may have been built with CURL_DISABLE_VERBOSE_STRINGS, in which case
+   curl_easy_strerror() returns "Error" for everything and CURLOPT_VERBOSE
+   prints nothing. Spell out the codes we are likely to run into ourselves. */
+static const char *
+HMS_explain_curl_code (CURLcode cc)
+{
+	switch (cc)
+	{
+		case CURLE_UNSUPPORTED_PROTOCOL:
+			return "unsupported protocol - this build of libcurl may lack HTTPS support";
+		case CURLE_COULDNT_RESOLVE_HOST:
+			return "could not resolve the host name";
+		case CURLE_COULDNT_CONNECT:
+			return "could not connect to the server";
+		case CURLE_OPERATION_TIMEDOUT:
+			return "the request timed out";
+		case CURLE_SSL_CONNECT_ERROR:
+			return "the TLS handshake failed";
+		case CURLE_PEER_FAILED_VERIFICATION:
+			return "the server certificate could not be verified";
+		case CURLE_SSL_CACERT_BADFILE:
+			return "the CA certificate bundle could not be read";
+		case CURLE_GOT_NOTHING:
+			return "the server closed the connection without answering";
+		case CURLE_SEND_ERROR:
+			return "sending the request failed";
+		case CURLE_RECV_ERROR:
+			return "receiving the answer failed";
+		default:
+			return "see the libcurl documentation for this code";
+	}
+}
+
+FUNCDEBUG static struct HMS_buffer *
+HMS_connect (int proto, const char *format, ...)
 {
 	va_list ap;
 	CURL *curl;
@@ -223,8 +304,14 @@ HMS_connect (const char *format, ...)
 	size_t token_length;
 	struct HMS_buffer *buffer;
 
+#ifdef NO_IPV6
+	if (proto == PROTO_V6)
+		return NULL;
+#endif
+
 	if (! hms_started)
 	{
+		hms_allow_ipv6 = !M_CheckParm("-noipv6");
 		if (curl_global_init(CURL_GLOBAL_ALL) != 0)
 		{
 			Contact_error();
@@ -235,6 +322,9 @@ HMS_connect (const char *format, ...)
 		{
 			atexit(curl_global_cleanup);
 			hms_started = 1;
+
+			/* Which TLS backend we ended up with matters a lot here, so say it. */
+			CONS_Printf("HMS: using %s\n", curl_version());
 		}
 	}
 
@@ -287,6 +377,7 @@ HMS_connect (const char *format, ...)
 
 	buffer = malloc(sizeof *buffer);
 	buffer->curl = curl;
+	buffer->proto = proto;
 	buffer->end = DEFAULT_BUFFER_SIZE;
 	buffer->buffer = malloc(buffer->end);
 	buffer->needle = 0;
@@ -306,7 +397,9 @@ HMS_connect (const char *format, ...)
 	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 
 #ifndef NO_IPV6
-	if (M_CheckParm("-noipv6"))
+	if (proto == PROTO_V6)
+		curl_easy_setopt(curl, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V6);
+	if (proto == PROTO_V4)
 #endif
 		curl_easy_setopt(curl, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
 
@@ -317,6 +410,14 @@ HMS_connect (const char *format, ...)
 #if defined(__ANDROID__)
 	HMS_set_cert(curl);
 #endif
+
+	if (cv_masterserver_insecure.value)
+	{
+		CONS_Alert(CONS_WARNING,
+				"HMS: masterserver_insecure is on, the server certificate is NOT checked\n");
+		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+	}
 
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, hms_useragent);
 
@@ -338,10 +439,46 @@ HMS_do (struct HMS_buffer *buffer)
 
 	if (cc != CURLE_OK)
 	{
+		long oserrno = 0;
+		long verifyresult = 0;
+
+		curl_easy_getinfo(buffer->curl, CURLINFO_OS_ERRNO, &oserrno);
+		curl_easy_getinfo(buffer->curl, CURLINFO_SSL_VERIFYRESULT, &verifyresult);
+
+#ifndef NO_IPV6
+		/* A failed IPv6 attempt is not an error worth shouting about: plenty
+		   of networks, mobile ones above all, simply have no IPv6 at all. The
+		   IPv4 listing carries the server just fine on its own. */
+		if (buffer->proto == PROTO_V6)
+		{
+			CONS_Printf(
+					"HMS: no IPv6 route to the master server (curl code %d, system error %ld).\n",
+					(int)cc,
+					oserrno
+			);
+
+			if (cc == CURLE_COULDNT_CONNECT || cc == CURLE_COULDNT_RESOLVE_HOST)
+			{
+				/* Don't keep paying the connection timeout on every update. */
+				hms_allow_ipv6 = false;
+				CONS_Printf("HMS: not trying IPv6 again until the game is restarted.\n");
+			}
+
+			return 0;
+		}
+#endif
+
 		Contact_error();
 		Blame(
-				"From curl_easy_perform: %s\n",
-				curl_easy_strerror(cc)
+				"From curl_easy_perform: %s (curl code %d: %s)\n",
+				curl_easy_strerror(cc),
+				(int)cc,
+				HMS_explain_curl_code(cc)
+		);
+		Blame(
+				"System error %ld, certificate check result %ld.\n",
+				oserrno,
+				verifyresult
 		);
 		return 0;
 	}
@@ -400,7 +537,7 @@ HMS_fetch_rooms (int joining, int query_id)
 
 	(void)query_id;
 
-	hms = HMS_connect("rooms");
+	hms = HMS_connect(PROTO_ANY, "rooms");
 
 	if (! hms)
 		return 0;
@@ -500,7 +637,7 @@ HMS_register (void)
 
 	char *title;
 
-	hms = HMS_connect("rooms/%d/register", ms_RoomId);
+	hms = HMS_connect(PROTO_V4, "rooms/%d/register", cv_masterserver_room_id.value);
 
 	if (! hms)
 		return 0;
@@ -532,6 +669,36 @@ HMS_register (void)
 
 	HMS_end(hms);
 
+#ifndef NO_IPV6
+	if (hms_allow_ipv6)
+	{
+		int ok_ipv6 = 0;
+
+		hms = HMS_connect(PROTO_V6, "rooms/%d/register", cv_masterserver_room_id.value);
+
+		if (hms)
+		{
+			curl_easy_setopt(hms->curl, CURLOPT_POSTFIELDS, post);
+
+			ok_ipv6 = HMS_do(hms);
+
+			if (ok_ipv6)
+			{
+				hms_server_token_ipv6 = strdup(strtok(hms->buffer, "\n"));
+			}
+
+			HMS_end(hms);
+		}
+
+		/* Plenty of networks (mobile ones especially) have no IPv6 at all.
+		   Don't report the whole registration as failed in that case. */
+		if (! ok_ipv6 && ok)
+			CONS_Printf("Listed over IPv4 only.\n");
+
+		ok = (ok || ok_ipv6);
+	}
+#endif
+
 	return ok;
 }
 
@@ -539,19 +706,43 @@ int
 HMS_unlist (void)
 {
 	struct HMS_buffer *hms;
-	int ok;
+	int ok = 0;
 
-	hms = HMS_connect("servers/%s/unlist", hms_server_token);
+	if (hms_server_token)
+	{
+		hms = HMS_connect(PROTO_V4, "servers/%s/unlist", hms_server_token);
 
-	if (! hms)
-		return 0;
+		if (! hms)
+			return 0;
 
-	curl_easy_setopt(hms->curl, CURLOPT_CUSTOMREQUEST, "POST");
+		curl_easy_setopt(hms->curl, CURLOPT_POST, 1);
+		curl_easy_setopt(hms->curl, CURLOPT_POSTFIELDSIZE, 0);
 
-	ok = HMS_do(hms);
-	HMS_end(hms);
+		ok = HMS_do(hms);
+		HMS_end(hms);
 
-	free(hms_server_token);
+		free(hms_server_token);
+		hms_server_token = NULL;
+	}
+
+#ifndef NO_IPV6
+	if (hms_server_token_ipv6 && hms_allow_ipv6)
+	{
+		hms = HMS_connect(PROTO_V6, "servers/%s/unlist", hms_server_token_ipv6);
+
+		if (hms)
+		{
+			curl_easy_setopt(hms->curl, CURLOPT_POST, 1);
+			curl_easy_setopt(hms->curl, CURLOPT_POSTFIELDSIZE, 0);
+
+			ok = (HMS_do(hms) || ok);
+			HMS_end(hms);
+		}
+
+		free(hms_server_token_ipv6);
+		hms_server_token_ipv6 = NULL;
+	}
+#endif
 
 	return ok;
 }
@@ -560,18 +751,13 @@ int
 HMS_update (void)
 {
 	struct HMS_buffer *hms;
-	int ok;
+	int ok = 0;
 
 	char post[256];
 
 	char *title;
 
-	hms = HMS_connect("servers/%s/update", hms_server_token);
-
-	if (! hms)
-		return 0;
-
-	title = curl_easy_escape(hms->curl, cv_servername.string, 0);
+	title = curl_easy_escape(NULL, cv_servername.string, 0);
 
 	snprintf(post, sizeof post,
 			"title=%s",
@@ -580,10 +766,33 @@ HMS_update (void)
 
 	curl_free(title);
 
-	curl_easy_setopt(hms->curl, CURLOPT_POSTFIELDS, post);
+	if (hms_server_token)
+	{
+		hms = HMS_connect(PROTO_V4, "servers/%s/update", hms_server_token);
 
-	ok = HMS_do(hms);
-	HMS_end(hms);
+		if (! hms)
+			return 0;
+
+		curl_easy_setopt(hms->curl, CURLOPT_POSTFIELDS, post);
+
+		ok = HMS_do(hms);
+		HMS_end(hms);
+	}
+
+#ifndef NO_IPV6
+	if (hms_server_token_ipv6 && hms_allow_ipv6)
+	{
+		hms = HMS_connect(PROTO_V6, "servers/%s/update", hms_server_token_ipv6);
+
+		if (hms)
+		{
+			curl_easy_setopt(hms->curl, CURLOPT_POSTFIELDS, post);
+
+			ok = (HMS_do(hms) || ok);
+			HMS_end(hms);
+		}
+	}
+#endif
 
 	return ok;
 }
@@ -596,7 +805,7 @@ HMS_list_servers (void)
 	char *list;
 	char *p;
 
-	hms = HMS_connect("servers");
+	hms = HMS_connect(PROTO_ANY, "servers");
 
 	if (! hms)
 		return;
@@ -645,10 +854,10 @@ HMS_fetch_servers (msg_server_t *list, int room_number, int query_id)
 
 	if (room_number > 0)
 	{
-		hms = HMS_connect("rooms/%d/servers", room_number);
+		hms = HMS_connect(PROTO_ANY, "rooms/%d/servers", room_number);
 	}
 	else
-		hms = HMS_connect("servers");
+		hms = HMS_connect(PROTO_ANY, "servers");
 
 	if (! hms)
 		return NULL;
@@ -699,7 +908,16 @@ HMS_fetch_servers (msg_server_t *list, int room_number, int query_id)
 						break;
 #endif
 
-					if (strcmp(version, local_version) == 0)
+					if (strcmp(version, local_version) != 0)
+					{
+						if (cv_masterserver_debug.value)
+						{
+							CONS_Printf(
+									"HMS: skipping %s:%s, it runs %s and we are %s\n",
+									address, port, version, local_version);
+						}
+					}
+					else
 					{
 						strlcpy(list[i].ip,      address, sizeof list[i].ip);
 						strlcpy(list[i].port,    port,    sizeof list[i].port);
@@ -734,6 +952,8 @@ HMS_fetch_servers (msg_server_t *list, int room_number, int query_id)
 
 		if (doing_shit)
 			list[i].header.buffer[0] = 0;
+
+		CONS_Printf("HMS: the master server listed %d server(s) for us\n", i);
 	}
 	else
 		list = NULL;
@@ -752,7 +972,7 @@ HMS_compare_mod_version (char *buffer, size_t buffer_size)
 	char *version;
 	char *version_name;
 
-	hms = HMS_connect("versions/%d", MODID);
+	hms = HMS_connect(PROTO_ANY, "versions/%d", MODID);
 
 	if (! hms)
 		return 0;

@@ -32,7 +32,7 @@
 #endif
 
 INT32 numskins = 0;
-skin_t skins[MAXSKINS];
+skin_t **skins = NULL;
 
 // FIXTHIS: don't work because it must be inistilised before the config load
 //#define SKINVALUES
@@ -46,24 +46,126 @@ CV_PossibleValue_t skin_cons_t[MAXSKINS+1];
 // For super players, does the same as above - but tries the super equivalent for each sprite2 before the non-super version.
 //
 
-UINT8 P_GetSkinSprite2(skin_t *skin, UINT8 spr2, player_t *player)
+// Gets the animation ID of a state
+UINT16 P_GetStateSprite2(state_t *state)
 {
-	UINT8 super = 0, i = 0;
+	if (state->sprite2)
+		return state->sprite2;
+	else
+	{
+		// Transform the state frame into an animation ID
+		UINT16 spr2 = state->frame & FF_FRAMEMASK;
+
+		if (state->frame & SPR2F_SUPER)
+			spr2 |= SPR2F_SUPER;
+
+		return spr2;
+	}
+}
+
+// Gets the starting frame of an animation
+UINT16 P_GetSprite2StateFrame(state_t *state)
+{
+	if (state->sprite2)
+		return state->frame & FF_FRAMEMASK;
+	else
+		return 0;
+}
+
+// Checks if a state should use the "super" variant of the animation
+boolean P_IsStateSprite2Super(state_t *state)
+{
+	if (state->sprite2)
+	{
+		if (state->sprite2 & SPR2F_SUPER)
+			return true;
+	}
+	else if (state->frame & SPR2F_SUPER)
+		return true;
+
+	return false;
+}
+
+// Applies SPR2F_SUPER to an animation based on the actor's state
+UINT16 P_ApplySuperFlagToSprite2(UINT16 spr2, mobj_t *mobj)
+{
+	if (mobj->player)
+	{
+		if (mobj->player->charflags & SF_NOSUPERSPRITES || (mobj->player->powers[pw_carry] == CR_NIGHTSMODE && (mobj->player->charflags & SF_NONIGHTSSUPER)))
+			spr2 &= ~SPR2F_SUPER;
+		else if (mobj->player->powers[pw_super] || (mobj->player->powers[pw_carry] == CR_NIGHTSMODE && (mobj->player->charflags & SF_SUPER)))
+			spr2 |= SPR2F_SUPER;
+	}
+
+	if (spr2 & SPR2F_SUPER)
+	{
+		if (mobj->eflags & MFE_FORCENOSUPER)
+			spr2 &= ~SPR2F_SUPER;
+	}
+	else if (mobj->eflags & MFE_FORCESUPER)
+		spr2 |= SPR2F_SUPER;
+
+	return spr2;
+}
+
+spritedef_t *P_GetSkinSpritedef(skin_t *skin, UINT16 spr2)
+{
+	if (!skin)
+		return NULL;
+
+	boolean is_super = spr2 & SPR2F_SUPER;
+
+	spr2 &= SPR2F_MASK;
+
+	if (spr2 >= free_spr2)
+		return NULL;
+
+	if (is_super)
+		return &skin->super.sprites[spr2];
+	else
+		return &skin->sprites[spr2];
+}
+
+spriteinfo_t *P_GetSkinSpriteInfo(skin_t *skin, UINT16 spr2)
+{
+	if (!skin)
+		return NULL;
+
+	boolean is_super = spr2 & SPR2F_SUPER;
+
+	spr2 &= SPR2F_MASK;
+
+	if (spr2 >= free_spr2)
+		return NULL;
+
+	if (is_super)
+		return &skin->super.sprinfo[spr2];
+	else
+		return &skin->sprinfo[spr2];
+}
+
+boolean P_IsValidSprite2(skin_t *skin, UINT16 spr2)
+{
+	spritedef_t *sprdef = P_GetSkinSpritedef(skin, spr2);
+	return sprdef && sprdef->numframes;
+}
+
+UINT16 P_GetSkinSprite2(skin_t *skin, UINT16 spr2, player_t *player)
+{
+	UINT16 super = 0;
+	UINT8 i = 0;
 
 	if (!skin)
 		return 0;
 
-	if ((playersprite_t)(spr2 & ~FF_SPR2SUPER) >= free_spr2)
-		return 0;
-
-	while (!skin->sprites[spr2].numframes
+	while (!P_IsValidSprite2(skin, spr2)
 		&& spr2 != SPR2_STND
 		&& ++i < 32) // recursion limiter
 	{
-		if (spr2 & FF_SPR2SUPER)
+		if (spr2 & SPR2F_SUPER)
 		{
-			super = FF_SPR2SUPER;
-			spr2 &= ~FF_SPR2SUPER;
+			super = SPR2F_SUPER;
+			spr2 &= ~SPR2F_SUPER;
 			continue;
 		}
 
@@ -105,7 +207,7 @@ static void Sk_SetDefaultValue(skin_t *skin)
 	//
 	memset(skin, 0, sizeof (skin_t));
 	snprintf(skin->name,
-		sizeof skin->name, "skin %u", (UINT32)(skin-skins));
+		sizeof skin->name, "skin %u", (UINT32)(skin->skinnum));
 	skin->name[sizeof skin->name - 1] = '\0';
 	skin->wadnum = INT16_MAX;
 
@@ -119,6 +221,7 @@ static void Sk_SetDefaultValue(skin_t *skin)
 	skin->prefcolor = SKINCOLOR_GREEN;
 	skin->supercolor = SKINCOLOR_SUPERGOLD1;
 	skin->prefoppositecolor = 0; // use tables
+	skin->natkcolor = SKINCOLOR_NONE;
 
 	skin->normalspeed = 36<<FRACBITS;
 	skin->runspeed = 28<<FRACBITS;
@@ -300,7 +403,7 @@ INT32 R_SkinAvailable(const char *name)
 	for (i = 0; i < numskins; i++)
 	{
 		// search in the skin list
-		if (stricmp(skins[i].name,name)==0)
+		if (stricmp(skins[i]->name,name)==0)
 			return i;
 	}
 	return -1;
@@ -309,7 +412,7 @@ INT32 R_SkinAvailable(const char *name)
 // Auxillary function that actually sets the skin
 static void SetSkin(player_t *player, INT32 skinnum)
 {
-	skin_t *skin = &skins[skinnum];
+	skin_t *skin = skins[skinnum];
 	UINT16 newcolor = 0;
 
 	player->skin = skinnum;
@@ -368,9 +471,9 @@ static void SetSkin(player_t *player, INT32 skinnum)
 	if (player->mo)
 	{
 		fixed_t radius = FixedMul(skin->radius, player->mo->scale);
-		if ((player->powers[pw_carry] == CR_NIGHTSMODE) && (skin->sprites[SPR2_NFLY].numframes == 0)) // If you don't have a sprite for flying horizontally, use the default NiGHTS skin.
+		if ((player->powers[pw_carry] == CR_NIGHTSMODE) && (P_GetSkinSpritedef(skin, SPR2_NFLY)->numframes == 0)) // If you don't have a sprite for flying horizontally, use the default NiGHTS skin.
 		{
-			skin = &skins[DEFAULTNIGHTSSKIN];
+			skin = skins[DEFAULTNIGHTSSKIN];
 			player->followitem = skin->followitem;
 			if (!(cv_debug || devparm) && !(netgame || multiplayer || demoplayback))
 				newcolor = skin->prefcolor; // will be updated in thinker to flashing
@@ -502,10 +605,10 @@ static UINT16 W_CheckForPatchSkinMarkerInPwad(UINT16 wadid, UINT16 startlump)
 	return INT16_MAX; // not found
 }
 
-static void R_LoadSkinSprites(UINT16 wadnum, UINT16 *lump, UINT16 *lastlump, skin_t *skin, UINT8 start_spr2)
+static void R_LoadSkinSprites(UINT16 wadnum, UINT16 *lump, UINT16 *lastlump, skin_t *skin, UINT16 start_spr2)
 {
 	UINT16 newlastlump;
-	UINT8 sprite2;
+	UINT16 sprite2;
 
 	*lump += 1; // start after S_SKIN
 	*lastlump = W_CheckNumForNamePwad("S_END",wadnum,*lump); // stop at S_END
@@ -525,7 +628,7 @@ static void R_LoadSkinSprites(UINT16 wadnum, UINT16 *lump, UINT16 *lastlump, ski
 		newlastlump++;
 		// load all sprite sets we are aware of... for super!
 		for (sprite2 = start_spr2; sprite2 < free_spr2; sprite2++)
-			R_AddSingleSpriteDef(spr2names[sprite2], &skin->sprites[FF_SPR2SUPER|sprite2], wadnum, newlastlump, *lastlump, false);
+			R_AddSingleSpriteDef(spr2names[sprite2], &skin->super.sprites[sprite2], wadnum, newlastlump, *lastlump, false);
 
 		newlastlump--;
 		*lastlump = newlastlump; // okay, make the normal sprite set loading end there
@@ -537,6 +640,14 @@ static void R_LoadSkinSprites(UINT16 wadnum, UINT16 *lump, UINT16 *lastlump, ski
 
 	if (skin->sprites[0].numframes == 0)
 		CONS_Alert(CONS_ERROR, M_GetText("No frames found for sprite SPR2_%s\n"), spr2names[0]);
+
+	// TODO: 2.3: Delete
+	memcpy(&skin->sprites_compat[start_spr2],
+		&skin->sprites[start_spr2],
+		sizeof(spritedef_t) * (free_spr2 - start_spr2));
+	memcpy(&skin->sprites_compat[start_spr2 + NUMPLAYERSPRITES],
+		&skin->super.sprites[start_spr2],
+		sizeof(spritedef_t) * (free_spr2 - start_spr2));
 }
 
 // returns whether found appropriate property
@@ -587,6 +698,9 @@ static boolean R_ProcessPatchableFields(skin_t *skin, char *stoken, char *value)
 	GETSKINCOLOR(prefcolor)
 	GETSKINCOLOR(prefoppositecolor)
 #undef GETSKINCOLOR
+
+	else if (!stricmp(stoken, "natkcolor"))
+		skin->natkcolor = R_GetColorByName(value); // SKINCOLOR_NONE is allowed here
 	else if (!stricmp(stoken, "supercolor"))
 	{
 		UINT16 color = R_GetSuperColorByName(value);
@@ -710,8 +824,10 @@ void R_AddSkins(UINT16 wadnum, boolean mainfile)
 		buf2[size] = '\0';
 
 		// set defaults
-		skin = &skins[numskins];
+		skins = Z_Realloc(skins, sizeof(skin_t*) * (numskins + 1), PU_STATIC, NULL);
+		skin = skins[numskins] = Z_Calloc(sizeof(skin_t), PU_STATIC, NULL);
 		Sk_SetDefaultValue(skin);
+		skin->skinnum = numskins;
 		skin->wadnum = wadnum;
 		hudname = realname = supername = false;
 		// parse
@@ -903,7 +1019,7 @@ void R_PatchSkins(UINT16 wadnum, boolean mainfile)
 					strlwr(value);
 					skinnum = R_SkinAvailable(value);
 					if (skinnum != -1)
-						skin = &skins[skinnum];
+						skin = skins[skinnum];
 					else
 					{
 						CONS_Debug(DBG_SETUP, "R_PatchSkins: unknown skin name in P_SKIN lump# %d(%s) in WAD %s\n", lump, W_CheckNameForNumPwad(wadnum,lump), wadfiles[wadnum]->filename);
@@ -995,7 +1111,7 @@ static UINT16 W_CheckForEitherSkinMarkerInPwad(UINT16 wadid, UINT16 startlump)
 	return INT16_MAX; // not found
 }
 
-static void R_RefreshSprite2ForWad(UINT16 wadnum, UINT8 start_spr2)
+static void R_RefreshSprite2ForWad(UINT16 wadnum, UINT16 start_spr2)
 {
 	UINT16 lump, lastlump = 0;
 	char *buf;
@@ -1054,7 +1170,7 @@ static void R_RefreshSprite2ForWad(UINT16 wadnum, UINT8 start_spr2)
 				strlwr(value);
 				skinnum = R_SkinAvailable(value);
 				if (skinnum != -1)
-					skin = &skins[skinnum];
+					skin = skins[skinnum];
 				else
 				{
 					CONS_Debug(DBG_SETUP, "R_RefreshSprite2ForWad: unknown skin name in P_SKIN lump# %d(%s) in WAD %s\n", lump, W_CheckNameForNumPwad(wadnum,lump), wadfiles[wadnum]->filename);

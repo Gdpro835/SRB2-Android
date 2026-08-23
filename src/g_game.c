@@ -302,7 +302,9 @@ consvar_t cv_chatheight= CVAR_INIT ("chatheight", "8", CV_SAVE|CV_SLIDER_SAFE, c
 consvar_t cv_chatnotifications= CVAR_INIT ("chatnotifications", "On", CV_SAVE, CV_OnOff, NULL);
 
 // chat spam protection (why would you want to disable that???)
-consvar_t cv_chatspamprotection= CVAR_INIT ("chatspamprotection", "On", CV_SAVE, CV_OnOff, NULL);
+consvar_t cv_chatspamprotection= CVAR_INIT ("chatspamprotection", "On", CV_SAVE|CV_NETVAR, CV_OnOff, NULL);
+consvar_t cv_chatspamspeed= CVAR_INIT ("chatspamspeed", "35", CV_SAVE|CV_NETVAR, CV_Unsigned, NULL);
+consvar_t cv_chatspamburst= CVAR_INIT ("chatspamburst", "3", CV_SAVE|CV_NETVAR, CV_Unsigned, NULL);
 
 // minichat text background
 consvar_t cv_chatbacktint = CVAR_INIT ("chatbacktint", "On", CV_SAVE, CV_OnOff, NULL);
@@ -585,14 +587,14 @@ static void G_SetMainRecords(gamedata_t *data, player_t *player)
 			I_Error("Out of memory for replay filepath\n");
 
 		sprintf(gpath,"%s"PATHSEP"replay"PATHSEP"%s"PATHSEP"%s", srb2home, timeattackfolder, G_BuildMapName(gamemap));
-		snprintf(lastdemo, 255, "%s-%s-last.lmp", gpath, skins[cv_chooseskin.value-1].name);
+		snprintf(lastdemo, 255, "%s-%s-last.lmp", gpath, skins[cv_chooseskin.value-1]->name);
 
 		if (FIL_FileExists(lastdemo))
 		{
 			UINT8 *buf;
 			size_t len = FIL_ReadFile(lastdemo, &buf);
 
-			snprintf(bestdemo, 255, "%s-%s-time-best.lmp", gpath, skins[cv_chooseskin.value-1].name);
+			snprintf(bestdemo, 255, "%s-%s-time-best.lmp", gpath, skins[cv_chooseskin.value-1]->name);
 			if (!FIL_FileExists(bestdemo) || G_CmpDemoTime(bestdemo, lastdemo) & 1)
 			{ // Better time, save this demo.
 				if (FIL_FileExists(bestdemo))
@@ -601,7 +603,7 @@ static void G_SetMainRecords(gamedata_t *data, player_t *player)
 				CONS_Printf("\x83%s\x80 %s '%s'\n", M_GetText("NEW RECORD TIME!"), M_GetText("Saved replay as"), bestdemo);
 			}
 
-			snprintf(bestdemo, 255, "%s-%s-score-best.lmp", gpath, skins[cv_chooseskin.value-1].name);
+			snprintf(bestdemo, 255, "%s-%s-score-best.lmp", gpath, skins[cv_chooseskin.value-1]->name);
 			if (!FIL_FileExists(bestdemo) || (G_CmpDemoTime(bestdemo, lastdemo) & (1<<1)))
 			{ // Better score, save this demo.
 				if (FIL_FileExists(bestdemo))
@@ -610,7 +612,7 @@ static void G_SetMainRecords(gamedata_t *data, player_t *player)
 				CONS_Printf("\x83%s\x80 %s '%s'\n", M_GetText("NEW HIGH SCORE!"), M_GetText("Saved replay as"), bestdemo);
 			}
 
-			snprintf(bestdemo, 255, "%s-%s-rings-best.lmp", gpath, skins[cv_chooseskin.value-1].name);
+			snprintf(bestdemo, 255, "%s-%s-rings-best.lmp", gpath, skins[cv_chooseskin.value-1]->name);
 			if (!FIL_FileExists(bestdemo) || (G_CmpDemoTime(bestdemo, lastdemo) & (1<<2)))
 			{ // Better rings, save this demo.
 				if (FIL_FileExists(bestdemo))
@@ -723,14 +725,14 @@ static void G_SetNightsRecords(gamedata_t *data, player_t *player)
 			I_Error("Out of memory for replay filepath\n");
 
 		sprintf(gpath,"%s"PATHSEP"replay"PATHSEP"%s"PATHSEP"%s", srb2home, timeattackfolder, G_BuildMapName(gamemap));
-		snprintf(lastdemo, 255, "%s-%s-last.lmp", gpath, skins[cv_chooseskin.value-1].name);
+		snprintf(lastdemo, 255, "%s-%s-last.lmp", gpath, skins[cv_chooseskin.value-1]->name);
 
 		if (FIL_FileExists(lastdemo))
 		{
 			UINT8 *buf;
 			size_t len = FIL_ReadFile(lastdemo, &buf);
 
-			snprintf(bestdemo, 255, "%s-%s-time-best.lmp", gpath, skins[cv_chooseskin.value-1].name);;
+			snprintf(bestdemo, 255, "%s-%s-time-best.lmp", gpath, skins[cv_chooseskin.value-1]->name);;
 			if (!FIL_FileExists(bestdemo) || G_CmpDemoTime(bestdemo, lastdemo) & 1)
 			{ // Better time, save this demo.
 				if (FIL_FileExists(bestdemo))
@@ -739,7 +741,7 @@ static void G_SetNightsRecords(gamedata_t *data, player_t *player)
 				CONS_Printf("\x83%s\x80 %s '%s'\n", M_GetText("NEW RECORD TIME!"), M_GetText("Saved replay as"), bestdemo);
 			}
 
-			snprintf(bestdemo, 255, "%s-%s-score-best.lmp", gpath, skins[cv_chooseskin.value-1].name);
+			snprintf(bestdemo, 255, "%s-%s-score-best.lmp", gpath, skins[cv_chooseskin.value-1]->name);
 			if (!FIL_FileExists(bestdemo) || (G_CmpDemoTime(bestdemo, lastdemo) & (1<<1)))
 			{ // Better score, save this demo.
 				if (FIL_FileExists(bestdemo))
@@ -5197,7 +5199,7 @@ char *G_LiveEventHasBackup(void)
 //
 void G_DeferedInitNew(boolean pultmode, const char *mapname, INT32 pickedchar, boolean SSSG, boolean FLS)
 {
-	UINT16 color = skins[pickedchar].prefcolor;
+	UINT16 color = skins[pickedchar]->prefcolor;
 	paused = false;
 
 	if (demoplayback)
@@ -5210,7 +5212,7 @@ void G_DeferedInitNew(boolean pultmode, const char *mapname, INT32 pickedchar, b
 	if (savedata.lives > 0)
 	{
 		if ((botingame = ((botskin = savedata.botskin) != 0)))
-			botcolor = skins[botskin-1].prefcolor;
+			botcolor = skins[botskin-1]->prefcolor;
 	}
 	else if (splitscreen != SSSG)
 	{
@@ -5218,9 +5220,9 @@ void G_DeferedInitNew(boolean pultmode, const char *mapname, INT32 pickedchar, b
 		SplitScreen_OnChange();
 	}
 
-	color = skins[pickedchar].prefcolor;
+	color = skins[pickedchar]->prefcolor;
 	SetPlayerSkinByNum(consoleplayer, pickedchar);
-	CV_StealthSet(&cv_skin, skins[pickedchar].name);
+	CV_StealthSet(&cv_skin, skins[pickedchar]->name);
 	CV_StealthSetValue(&cv_playercolor, color);
 
 	if (mapname)
@@ -5336,7 +5338,7 @@ void G_InitNew(UINT8 pultmode, const char *mapname, boolean resetplayer, boolean
 		players[consoleplayer].lives = savedata.lives;
 		players[consoleplayer].score = savedata.score;
 		if ((botingame = ((botskin = savedata.botskin) != 0)))
-			botcolor = skins[botskin-1].prefcolor;
+			botcolor = skins[botskin-1]->prefcolor;
 		emeralds = savedata.emeralds;
 		savedata.lives = 0;
 	}

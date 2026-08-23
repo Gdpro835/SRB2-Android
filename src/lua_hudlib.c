@@ -25,6 +25,7 @@
 #include "z_zone.h"
 #include "y_inter.h"
 
+#include "r_translation.h"
 #include "lua_script.h"
 #include "lua_libs.h"
 #include "lua_hud.h"
@@ -40,11 +41,13 @@ static const char *const hud_disable_options[] = {
 	"stagetitle",
 	"textspectator",
 	"crosshair",
+	"powerups",
 
 	"score",
 	"time",
 	"rings",
 	"lives",
+	"input",
 
 	"weaponrings",
 	"powerstones",
@@ -169,6 +172,7 @@ enum cameraf {
 	camera_x,
 	camera_y,
 	camera_z,
+	camera_reset,
 	camera_angle,
 	camera_subsector,
 	camera_floorz,
@@ -187,6 +191,7 @@ static const char *const camera_opt[] = {
 	"x",
 	"y",
 	"z",
+	"reset",
 	"angle",
 	"subsector",
 	"floorz",
@@ -341,6 +346,9 @@ static int camera_get(lua_State *L)
 	case camera_z:
 		lua_pushinteger(L, cam->z);
 		break;
+	case camera_reset:
+		lua_pushboolean(L, cam->reset);
+		break;
 	case camera_angle:
 		lua_pushinteger(L, cam->angle);
 		break;
@@ -387,6 +395,9 @@ static int camera_set(lua_State *L)
 	case camera_x:
 	case camera_y:
 		return luaL_error(L, LUA_QL("camera_t") " field " LUA_QS " should not be set directly. Use " LUA_QL("P_TryCameraMove") " or " LUA_QL("P_TeleportCameraMove") " instead.", camera_opt[field]);
+	case camera_reset:
+		cam->reset = luaL_checkboolean(L, 3);
+		break;
 	case camera_chase: {
 		INT32 chase = luaL_checkboolean(L, 3);
 		if (cam == &camera)
@@ -541,7 +552,7 @@ static int libd_getSprite2Patch(lua_State *L)
 	UINT8 angle = 0;
 	spritedef_t *sprdef;
 	spriteframe_t *sprframe;
-	boolean super = false; // add FF_SPR2SUPER to sprite2 if true
+	boolean super = false; // add SPR2F_SUPER to sprite2 if true
 	HUDONLY
 
 	// get skin first!
@@ -557,7 +568,7 @@ static int libd_getSprite2Patch(lua_State *L)
 	{
 		const char *name = luaL_checkstring(L, 1);
 		for (i = 0; i < numskins; i++)
-			if (fastcmp(skins[i].name, name))
+			if (fastcmp(skins[i]->name, name))
 				break;
 		if (i >= numskins)
 			return 0;
@@ -568,10 +579,10 @@ static int libd_getSprite2Patch(lua_State *L)
 	if (lua_isnumber(L, 1)) // sprite number given, e.g. SPR2_STND
 	{
 		j = lua_tonumber(L, 1);
-		if (j & FF_SPR2SUPER) // e.g. SPR2_STND|FF_SPR2SUPER
+		if (j & SPR2F_SUPER) // e.g. SPR2_STND|SPR2F_SUPER
 		{
 			super = true;
-			j &= ~FF_SPR2SUPER; // remove flag so the next check doesn't fail
+			j &= ~SPR2F_SUPER; // remove flag so the next check doesn't fail
 		}
 		if (j >= free_spr2)
 			return 0;
@@ -591,17 +602,22 @@ static int libd_getSprite2Patch(lua_State *L)
 
 	if (lua_isboolean(L, 2)) // optional boolean for superness
 	{
-		super = lua_toboolean(L, 2); // note: this can override FF_SPR2SUPER from sprite number
+		super = lua_toboolean(L, 2); // note: this can override SPR2F_SUPER from sprite number
 		lua_remove(L, 2); // remove
 	}
 	// if it's not boolean then just assume it's the frame number
 
 	if (super)
-		j |= FF_SPR2SUPER;
+		j |= SPR2F_SUPER;
 
-	j = P_GetSkinSprite2(&skins[i], j, NULL); // feed skin and current sprite2 through to change sprite2 used if necessary
+	// If there is no "super" variation of this sprite, try with the normal one.
+	if (!P_IsValidSprite2(skins[i], j))
+		j &= ~SPR2F_SUPER;
 
-	sprdef = &skins[i].sprites[j];
+	sprdef = P_GetSkinSpritedef(skins[i], j);
+
+	if (!sprdef)
+		return 0;
 
 	// set frame number
 	frame = luaL_optinteger(L, 2, 0);
@@ -629,7 +645,7 @@ static int libd_getSprite2Patch(lua_State *L)
 		INT32 rot = R_GetRollAngle(rollangle);
 
 		if (rot) {
-			patch_t *rotsprite = Patch_GetRotatedSprite(sprframe, frame, angle, sprframe->flip & (1<<angle), true, &skins[i].sprinfo[j], rot);
+			patch_t *rotsprite = Patch_GetRotatedSprite(sprframe, frame, angle, sprframe->flip & (1<<angle), true, P_GetSkinSpriteInfo(skins[i], j), rot);
 			LUA_PushUserdata(L, rotsprite, META_PATCH);
 			lua_pushboolean(L, false);
 			lua_pushboolean(L, true);
@@ -1117,6 +1133,7 @@ static int libd_getColormap(lua_State *L)
 	INT32 skinnum = TC_DEFAULT;
 	skincolornum_t color = luaL_optinteger(L, 2, 0);
 	UINT8* colormap = NULL;
+	int translation_id = -1;
 	HUDONLY
 	if (lua_isnoneornil(L, 1))
 		; // defaults to TC_DEFAULT
@@ -1136,10 +1153,60 @@ static int libd_getColormap(lua_State *L)
 			skinnum = i;
 	}
 
-	// all was successful above, now we generate the colormap at last!
+	if (!lua_isnoneornil(L, 3))
+	{
+		const char *translation_name = luaL_checkstring(L, 3);
+		translation_id = R_FindCustomTranslation(translation_name);
+		if (translation_id == -1)
+			return luaL_error(L, "invalid translation '%s'.", translation_name);
+	}
 
-	colormap = R_GetTranslationColormap(skinnum, color, GTC_CACHE);
+	// all was successful above, now we generate the colormap at last!
+	if (translation_id != -1)
+		colormap = R_GetTranslationRemap(translation_id, color, skinnum);
+
+	if (colormap == NULL)
+		colormap = R_GetTranslationColormap(skinnum, color, GTC_CACHE);
 	LUA_PushUserdata(L, colormap, META_COLORMAP); // push as META_COLORMAP userdata, specifically for patches to use!
+	return 1;
+}
+
+static int libd_getSectorColormap(lua_State *L)
+{
+	boolean has_sector = false;
+	sector_t *sector = NULL;
+	if (!lua_isnoneornil(L, 1))
+	{
+		has_sector = true;
+		sector = *((sector_t **)luaL_checkudata(L, 1, META_SECTOR));
+	}
+	fixed_t x = luaL_checkfixed(L, 2);
+	fixed_t y = luaL_checkfixed(L, 3);
+	fixed_t z = luaL_checkfixed(L, 4);
+	int lightlevel = luaL_optinteger(L, 5, 255);
+	UINT8 *colormap = NULL;
+	extracolormap_t *exc = NULL;
+
+	INLEVEL
+	HUDONLY
+
+	if (has_sector && !sector)
+		return LUA_ErrInvalid(L, "sector_t");
+
+	if (sector)
+		exc = P_GetColormapFromSectorAt(sector, x, y, z);
+	else
+		exc = P_GetSectorColormapAt(x, y, z);
+
+	if (exc)
+		colormap = exc->colormap;
+	else
+		colormap = colormaps;
+
+	lightlevel = 255 - min(max(lightlevel, 0), 255);
+	lightlevel >>= 3;
+
+	LUA_PushUserdata(L, colormap + (lightlevel * 256), META_COLORMAP);
 	return 1;
 }
 
@@ -1310,6 +1377,7 @@ static luaL_Reg lib_draw[] = {
 	{"getSprite2Patch", libd_getSprite2Patch},
 	{"getColormap", libd_getColormap},
 	{"getStringColormap", libd_getStringColormap},
+	{"getSectorColormap", libd_getSectorColormap},
 	// drawing
 	{"draw", libd_draw},
 	{"drawScaled", libd_drawScaled},

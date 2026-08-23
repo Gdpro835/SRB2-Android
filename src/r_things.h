@@ -71,6 +71,9 @@ void R_ClearSprites(void);
 UINT8 R_GetBoundingBoxColor(mobj_t *thing);
 boolean R_ThingBoundingBoxVisible(mobj_t *thing);
 
+transnum_t R_GetThingTransTable(fixed_t alpha, transnum_t transmap);
+void R_DrawFlippedPost(UINT8 *source, unsigned length, void (*drawcolfunc)(void));
+
 boolean R_ThingVisible (mobj_t *thing);
 
 boolean R_ThingWithinDist (mobj_t *thing,

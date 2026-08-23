@@ -105,8 +105,7 @@ void P_Thrust(mobj_t *mo, angle_t angle, fixed_t move)
 		mo->momy += FixedMul(move, FINESINE(angle));
 }
 
-#if 0
-static inline void P_ThrustEvenIn2D(mobj_t *mo, angle_t angle, fixed_t move)
+void P_ThrustEvenIn2D(mobj_t *mo, angle_t angle, fixed_t move)
 {
 	angle >>= ANGLETOFINESHIFT;
 
@@ -114,7 +113,7 @@ static inline void P_ThrustEvenIn2D(mobj_t *mo, angle_t angle, fixed_t move)
 	mo->momy += FixedMul(move, FINESINE(angle));
 }
 
-static inline void P_VectorInstaThrust(fixed_t xa, fixed_t xb, fixed_t xc, fixed_t ya, fixed_t yb, fixed_t yc,
+void P_VectorInstaThrust(fixed_t xa, fixed_t xb, fixed_t xc, fixed_t ya, fixed_t yb, fixed_t yc,
 	fixed_t za, fixed_t zb, fixed_t zc, fixed_t momentum, mobj_t *mo)
 {
 	fixed_t a1, b1, c1, a2, b2, c2, i, j, k;
@@ -144,7 +143,6 @@ static inline void P_VectorInstaThrust(fixed_t xa, fixed_t xb, fixed_t xc, fixed
 	mo->momy = j;
 	mo->momz = k;
 }
-#endif
 
 //
 // P_InstaThrust
@@ -684,8 +682,8 @@ static void P_DeNightserizePlayer(player_t *player)
 
 	player->mo->flags &= ~MF_NOGRAVITY;
 
-	player->mo->skin = &skins[player->skin];
-	player->followitem = skins[player->skin].followitem;
+	player->mo->skin = skins[player->skin];
+	player->followitem = skins[player->skin]->followitem;
 	player->mo->color = player->skincolor;
 	G_GhostAddColor(GHC_RETURNSKIN);
 
@@ -785,12 +783,12 @@ void P_NightserizePlayer(player_t *player, INT32 nighttime)
 		player->mo->height = P_GetPlayerHeight(player); // Just to make sure jumping into the drone doesn't result in a squashed hitbox.
 		player->oldscale = player->mo->scale;
 
-		if (skins[player->skin].sprites[SPR2_NFLY].numframes == 0) // If you don't have a sprite for flying horizontally, use the default NiGHTS skin.
+		if (P_GetSkinSpritedef(skins[player->skin], SPR2_NFLY)->numframes == 0) // If you don't have a sprite for flying horizontally, use the default NiGHTS skin.
 		{
-			player->mo->skin = &skins[DEFAULTNIGHTSSKIN];
+			player->mo->skin = skins[DEFAULTNIGHTSSKIN];
 			if (!(cv_debug || devparm) && !(netgame || multiplayer || demoplayback))
-				player->mo->color = skins[DEFAULTNIGHTSSKIN].prefcolor;
-			player->followitem = skins[DEFAULTNIGHTSSKIN].followitem;
+				player->mo->color = skins[DEFAULTNIGHTSSKIN]->prefcolor;
+			player->followitem = skins[DEFAULTNIGHTSSKIN]->followitem;
 			G_GhostAddColor(GHC_NIGHTSSKIN);
 		}
 	}
@@ -883,7 +881,8 @@ void P_NightserizePlayer(player_t *player, INT32 nighttime)
 			}
 
 			// Add score to leaderboards now
-			G_AddTempNightsRecords(player, players[i].marescore, leveltime - player->marebegunat, players[i].mare + 1);
+			player->lastmaretime = leveltime - player->marebegunat;
+			G_AddTempNightsRecords(player, players[i].marescore, player->lastmaretime, players[i].mare + 1);
 
 			// transfer scores anyway
 			players[i].totalmarescore += players[i].marescore;
@@ -909,7 +908,8 @@ void P_NightserizePlayer(player_t *player, INT32 nighttime)
 		player->finishedrings = (INT16)(player->rings);
 
 		// Add score to temp leaderboards
-		G_AddTempNightsRecords(player, player->marescore, leveltime - player->marebegunat, (UINT8)(oldmare + 1));
+		player->lastmaretime = leveltime - player->marebegunat;
+		G_AddTempNightsRecords(player, player->marescore, player->lastmaretime, (UINT8)(oldmare + 1));
 
 		// Starting a new mare, transfer scores
 		player->totalmarescore += player->marescore;
@@ -4320,7 +4320,7 @@ static void P_DoSuperStuff(player_t *player)
 
 		player->mo->color = (player->pflags & PF_GODMODE && cv_debug == 0)
 		? (SKINCOLOR_SUPERSILVER1 + 5*(((signed)leveltime >> 1) % 7)) // A wholesome easter egg.
-		: skins[player->skin].supercolor + abs( ( (player->powers[pw_super] >> 1) % 9) - 4); // This is where super flashing is handled.
+		: skins[player->skin]->supercolor + abs( ( (player->powers[pw_super] >> 1) % 9) - 4); // This is where super flashing is handled.
 
 		G_GhostAddColor(GHC_SUPER);
 
@@ -4342,50 +4342,59 @@ static void P_DoSuperStuff(player_t *player)
 		// Ran out of rings while super!
 		if (player->rings <= 0 || player->exiting)
 		{
-			player->powers[pw_emeralds] = 0; // lost the power stones
-			P_SpawnGhostMobj(player->mo);
-
-			player->powers[pw_super] = 0;
-
-			// Restore color
-			if ((player->powers[pw_shield] & SH_STACK) == SH_FIREFLOWER)
-			{
-				player->mo->color = SKINCOLOR_WHITE;
-				G_GhostAddColor(GHC_FIREFLOWER);
-			}
-			else
-			{
-				player->mo->color = player->skincolor;
-				G_GhostAddColor(GHC_NORMAL);
-			}
-
-			if (!G_CoopGametype())
-				player->powers[pw_flashing] = flashingtics-1;
-
-			if (player->mo->sprite2 & FF_SPR2SUPER)
-				P_SetPlayerMobjState(player->mo, player->mo->state-states);
-
-			// Inform the netgame that the champion has fallen in the heat of battle.
-			if (!G_CoopGametype())
-			{
-				S_StartSound(NULL, sfx_s3k66); //let all players hear it.
-				HU_SetCEchoFlags(0);
-				HU_SetCEchoDuration(5);
-				HU_DoCEcho(va("%s\\is no longer super.\\\\\\\\", player_names[player-players]));
-			}
-
-			// Resume normal music if you're the console player
-			if (P_IsLocalPlayer(player))
-			{
-				music_stack_noposition = true; // HACK: Do not reposition next music
-				music_stack_fadeout = MUSICRATE/2; // HACK: Fade out current music
-			}
-			P_RestoreMusic(player);
-
-			// If you had a shield, restore its visual significance.
-			P_SpawnShieldOrb(player);
+			P_DoSuperDetransformation(player);
 		}
 	}
+}
+
+//
+// P_DoSuperDetransformation
+//
+// Detransform into regular Sonic!
+void P_DoSuperDetransformation(player_t *player)
+{
+	player->powers[pw_emeralds] = 0; // lost the power stones
+	P_SpawnGhostMobj(player->mo);
+
+	player->powers[pw_super] = 0;
+
+	// Restore color
+	if ((player->powers[pw_shield] & SH_STACK) == SH_FIREFLOWER)
+	{
+		player->mo->color = SKINCOLOR_WHITE;
+		G_GhostAddColor(GHC_FIREFLOWER);
+	}
+	else
+	{
+		player->mo->color = player->skincolor;
+		G_GhostAddColor(GHC_NORMAL);
+	}
+
+	if (!G_CoopGametype())
+		player->powers[pw_flashing] = flashingtics-1;
+
+	if (player->mo->sprite2 & SPR2F_SUPER)
+		P_SetPlayerMobjState(player->mo, player->mo->state-states);
+
+	// Inform the netgame that the champion has fallen in the heat of battle.
+	if (!G_CoopGametype())
+	{
+		S_StartSound(NULL, sfx_s3k66); //let all players hear it.
+		HU_SetCEchoFlags(0);
+		HU_SetCEchoDuration(5);
+		HU_DoCEcho(va("%s\\is no longer super.\\\\\\\\", player_names[player-players]));
+	}
+
+	// Resume normal music if you're the console player
+	if (P_IsLocalPlayer(player))
+	{
+		music_stack_noposition = true; // HACK: Do not reposition next music
+		music_stack_fadeout = MUSICRATE/2; // HACK: Fade out current music
+	}
+	P_RestoreMusic(player);
+
+	// If you had a shield, restore its visual significance.
+	P_SpawnShieldOrb(player);
 }
 
 //
@@ -4602,7 +4611,7 @@ void P_DoJump(player_t *player, boolean soundandstate)
 	}
 }
 
-static void P_DoSpinDashDust(player_t *player)
+void P_DoSpinDashDust(player_t *player)
 {
 	UINT32 i;
 	mobj_t *particle;
@@ -11192,7 +11201,7 @@ static void P_MinecartThink(player_t *player)
 }
 
 // Handle Tails' fluff
-static void P_DoTailsOverlay(player_t *player, mobj_t *tails)
+void P_DoTailsOverlay(player_t *player, mobj_t *tails)
 {
 	// init...
 	boolean smilesonground = P_IsObjectOnGround(player->mo);
@@ -11331,7 +11340,7 @@ static void P_DoTailsOverlay(player_t *player, mobj_t *tails)
 		if (tails->state != states+chosenstate)
 		{
 			if (states[chosenstate].sprite == SPR_PLAY)
-				tails->sprite2 = P_GetSkinSprite2(((skin_t *)tails->skin), (states[chosenstate].frame & FF_FRAMEMASK), player);
+				tails->sprite2 = P_GetSkinSprite2(((skin_t *)tails->skin), P_GetStateSprite2(&states[chosenstate]), player);
 			P_SetMobjState(tails, chosenstate);
 		}
 	}
@@ -11397,7 +11406,7 @@ static void P_DoTailsOverlay(player_t *player, mobj_t *tails)
 }
 
 // Metal Sonic's jet fume
-static void P_DoMetalJetFume(player_t *player, mobj_t *fume)
+void P_DoMetalJetFume(player_t *player, mobj_t *fume)
 {
 	static const UINT8 FUME_SKINCOLORS[] =
 	{
@@ -11527,7 +11536,7 @@ static void P_DoMetalJetFume(player_t *player, mobj_t *fume)
 	if (resetinterp) R_ResetMobjInterpolationState(fume);
 
 	// If dashmode is high enough, spawn a trail
-	if (player->normalspeed >= skins[player->skin].normalspeed*2)
+	if (player->normalspeed >= skins[player->skin]->normalspeed*2)
 	{
 		mobj_t *ghost = P_SpawnGhostMobj(fume);
 		if (!P_MobjWasRemoved(ghost))
@@ -12374,25 +12383,25 @@ void P_PlayerThink(player_t *player)
 		{
 			if (prevdashmode >= DASHMODE_THRESHOLD)
 			{
-				player->normalspeed = skins[player->skin].normalspeed; // Reset to default if not capable of entering dash mode.
-				player->jumpfactor = skins[player->skin].jumpfactor;
+				player->normalspeed = skins[player->skin]->normalspeed; // Reset to default if not capable of entering dash mode.
+				player->jumpfactor = skins[player->skin]->jumpfactor;
 				if (player->powers[pw_strong] & STR_DASH)
 					player->powers[pw_strong] = STR_NONE;
 			}
 		}
 		else if (P_IsObjectOnGround(player->mo)) // Activate dash mode if we're on the ground.
 		{
-			if (player->normalspeed < skins[player->skin].normalspeed*2) // If the player normalspeed is not currently at normalspeed*2 in dash mode, add speed each tic
+			if (player->normalspeed < skins[player->skin]->normalspeed*2) // If the player normalspeed is not currently at normalspeed*2 in dash mode, add speed each tic
 				player->normalspeed += FRACUNIT/5; // Enter Dash Mode smoothly.
 
-			if (player->jumpfactor < FixedMul(skins[player->skin].jumpfactor, 5*FRACUNIT/4)) // Boost jump height.
+			if (player->jumpfactor < FixedMul(skins[player->skin]->jumpfactor, 5*FRACUNIT/4)) // Boost jump height.
 				player->jumpfactor += FRACUNIT/300;
 
 			if ((player->charflags & SF_MACHINE) && (!(player->powers[pw_strong] == STR_METAL))) 
 					player->powers[pw_strong] = STR_METAL;
 		}
 
-		if (player->normalspeed >= skins[player->skin].normalspeed*2)
+		if (player->normalspeed >= skins[player->skin]->normalspeed*2)
 		{
 			mobj_t *ghost = P_SpawnGhostMobj(player->mo); // Spawns afterimages
 			ghost->fuse = 2; // Makes the images fade quickly
@@ -12404,8 +12413,8 @@ void P_PlayerThink(player_t *player)
 	{
 		if (dashmode >= DASHMODE_THRESHOLD) // catch getting the flag!
 		{
-			player->normalspeed = skins[player->skin].normalspeed;
-			player->jumpfactor = skins[player->skin].jumpfactor;
+			player->normalspeed = skins[player->skin]->normalspeed;
+			player->jumpfactor = skins[player->skin]->jumpfactor;
 			S_StartSound(player->mo, sfx_kc65);
 			if (player->powers[pw_strong] & STR_DASH)
 				player->powers[pw_strong] = STR_NONE;
@@ -12716,7 +12725,7 @@ void P_PlayerAfterThink(player_t *player)
 				{
 					if (player->mo->state-states != S_PLAY_RIDE)
 						P_SetPlayerMobjState(player->mo, S_PLAY_RIDE);
-					if (tails->player && (tails->skin && ((skin_t *)(tails->skin))->sprites[SPR2_SWIM].numframes) && (tails->eflags & MFE_UNDERWATER))
+					if (tails->player && (tails->skin && P_GetSkinSpritedef(((skin_t *)(tails->skin)), SPR2_SWIM)->numframes) && (tails->eflags & MFE_UNDERWATER))
 						tails->player->powers[pw_tailsfly] = 0;
 				}
 				else if (player->powers[pw_carry] == CR_NONE)
@@ -13011,30 +13020,33 @@ void P_PlayerAfterThink(player_t *player)
 		}
 
 		if (player->followmobj)
-		{
-			if (LUA_HookFollowMobj(player, player->followmobj) || P_MobjWasRemoved(player->followmobj))
-				{;}
-			else
-			{
-				switch (player->followmobj->type)
-				{
-					case MT_TAILSOVERLAY: // c:
-						P_DoTailsOverlay(player, player->followmobj);
-						break;
-					case MT_METALJETFUME:
-						P_DoMetalJetFume(player, player->followmobj);
-						break;
-					default:
-						var1 = 1;
-						var2 = 0;
-						A_CapeChase(player->followmobj);
-						break;
-				}
-			}
-		}
+			P_DoFollowMobj(player, player->followmobj);
 	}
 
 	P_DoPlayerHeadSigns(player); // Spawn Tag/CTF signs over player's head
+}
+
+void P_DoFollowMobj(player_t *player, mobj_t *followmobj)
+{
+	if (LUA_HookFollowMobj(player, followmobj) || P_MobjWasRemoved(followmobj))
+		{;}
+	else
+	{
+		switch (followmobj->type)
+		{
+			case MT_TAILSOVERLAY: // c:
+				P_DoTailsOverlay(player, followmobj);
+				break;
+			case MT_METALJETFUME:
+				P_DoMetalJetFume(player, followmobj);
+				break;
+			default:
+				var1 = 1;
+				var2 = 0;
+				A_CapeChase(followmobj);
+				break;
+		}
+	}
 }
 
 void P_SetPlayerAngle(player_t *player, angle_t angle)

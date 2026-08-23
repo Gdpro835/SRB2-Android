@@ -18,6 +18,7 @@
 #include "g_game.h"
 #include "p_setup.h"
 
+#include "r_translation.h"
 #include "lua_script.h"
 #include "lua_libs.h"
 #include "lua_hud.h" // hud_running errors
@@ -66,7 +67,9 @@ enum mobj_e {
 	mobj_renderflags,
 	mobj_skin,
 	mobj_color,
+	mobj_translation,
 	mobj_blendmode,
+	mobj_alpha,
 	mobj_bnext,
 	mobj_bprev,
 	mobj_hnext,
@@ -146,7 +149,9 @@ static const char *const mobj_opt[] = {
 	"renderflags",
 	"skin",
 	"color",
+	"translation",
 	"blendmode",
+	"alpha",
 	"bnext",
 	"bprev",
 	"hnext",
@@ -338,8 +343,21 @@ static int mobj_get(lua_State *L)
 	case mobj_color:
 		lua_pushinteger(L, mo->color);
 		break;
+	case mobj_translation:
+		if (mo->translation)
+		{
+			const char *name = R_GetCustomTranslationName(mo->translation);
+			if (name)
+				lua_pushstring(L, name);
+			break;
+		}
+		lua_pushnil(L);
+		break;
 	case mobj_blendmode:
 		lua_pushinteger(L, mo->blendmode);
+		break;
+	case mobj_alpha:
+		lua_pushfixed(L, mo->alpha);
 		break;
 	case mobj_bnext:
 		LUA_PushUserdata(L, mo->bnext, META_MOBJ);
@@ -547,7 +565,7 @@ static int mobj_set(lua_State *L)
 		mo->frame = (UINT32)luaL_checkinteger(L, 3);
 		break;
 	case mobj_sprite2:
-		mo->sprite2 = P_GetSkinSprite2(((skin_t *)mo->skin), (UINT8)luaL_checkinteger(L, 3), mo->player);
+		mo->sprite2 = P_GetSkinSprite2(((skin_t *)mo->skin), (UINT16)luaL_checkinteger(L, 3), mo->player);
 		break;
 	case mobj_anim_duration:
 		mo->anim_duration = (UINT16)luaL_checkinteger(L, 3);
@@ -682,10 +700,10 @@ static int mobj_set(lua_State *L)
 		strlcpy(skin, luaL_checkstring(L, 3), sizeof skin);
 		strlwr(skin); // all skin names are lowercase
 		for (i = 0; i < numskins; i++)
-			if (fastcmp(skins[i].name, skin))
+			if (fastcmp(skins[i]->name, skin))
 			{
 				if (!mo->player || R_SkinUsable(mo->player-players, i))
-					mo->skin = &skins[i];
+					mo->skin = skins[i];
 				return 0;
 			}
 		return luaL_error(L, "mobj.skin '%s' not found!", skin);
@@ -698,12 +716,37 @@ static int mobj_set(lua_State *L)
 		mo->color = newcolor;
 		break;
 	}
+	case mobj_translation:
+	{
+		if (!lua_isnil(L, 3))
+		{
+			const char *tr = luaL_checkstring(L, 3);
+			int id = R_FindCustomTranslation(tr);
+			if (id != -1)
+				mo->translation = id;
+			else
+				return luaL_error(L, "invalid translation '%s'.", tr);
+		}
+		else
+			mo->translation = 0;
+		break;
+	}
 	case mobj_blendmode:
 	{
 		INT32 blendmode = (INT32)luaL_checkinteger(L, 3);
 		if (blendmode < 0 || blendmode > AST_OVERLAY)
 			return luaL_error(L, "mobj.blendmode %d out of range (0 - %d).", blendmode, AST_OVERLAY);
 		mo->blendmode = blendmode;
+		break;
+	}
+	case mobj_alpha:
+	{
+		fixed_t alpha = luaL_checkfixed(L, 3);
+		if (alpha < 0)
+			alpha = 0;
+		else if (alpha > FRACUNIT)
+			alpha = FRACUNIT;
+		mo->alpha = alpha;
 		break;
 	}
 	case mobj_bnext:

@@ -30,7 +30,7 @@ packet versions.
 If you change the struct or the meaning of a field
 therein, increment this number.
 */
-#define PACKETVERSION 4
+#define PACKETVERSION 5
 
 // Network play related stuff.
 // There is a data struct that stores network
@@ -92,7 +92,6 @@ typedef enum
 	PT_TEXTCMD,       // Extra text commands from the client.
 	PT_TEXTCMD2,      // Splitscreen text commands.
 	PT_CLIENTJOIN,    // Client wants to join; used in start game.
-	PT_NODETIMEOUT,   // Packet sent to self if the connection times out.
 
 	PT_LOGIN,         // Login attempt from the client.
 
@@ -214,6 +213,7 @@ enum {
 };
 
 #define MAXSERVERNAME 32
+#define MAX_MIRROR_LENGTH 256
 #define MAXFILENEEDED 915
 // This packet is too large
 typedef struct
@@ -244,6 +244,7 @@ typedef struct
 	unsigned char mapmd5[16];
 	UINT8 actnum;
 	UINT8 iszone;
+	char httpsource[MAX_MIRROR_LENGTH];
 	UINT8 fileneeded[MAXFILENEEDED]; // is filled with writexxx (byteptr.h)
 } ATTRPACK serverinfo_pak;
 
@@ -364,6 +365,7 @@ extern consvar_t cv_playbackspeed;
 #define KICK_MSG_PING_HIGH   6
 #define KICK_MSG_CUSTOM_KICK 7
 #define KICK_MSG_CUSTOM_BAN  8
+#define KICK_MSG_IDLE        9
 #define KICK_MSG_KEEP_BODY   0x80
 
 typedef enum
@@ -397,10 +399,12 @@ extern UINT32 realpingtable[MAXPLAYERS];
 extern UINT32 playerpingtable[MAXPLAYERS];
 extern tic_t servermaxping;
 
-extern consvar_t cv_netticbuffer, cv_allownewplayer, cv_joinnextround, cv_maxplayers, cv_joindelay, cv_rejointimeout;
+extern consvar_t cv_netticbuffer, cv_allownewplayer, cv_maxplayers, cv_joindelay, cv_rejointimeout;
 extern consvar_t cv_resynchattempts, cv_blamecfail;
 extern consvar_t cv_maxsend, cv_noticedownload, cv_downloadspeed;
 extern consvar_t cv_dedicatedidletime;
+extern consvar_t cv_httpsource;
+extern consvar_t cv_idletime, cv_idleaction;
 
 // Used in d_net, the only dependence
 tic_t ExpandTics(INT32 low, INT32 node);
@@ -411,6 +415,8 @@ void RegisterNetXCmd(netxcmd_t id, void (*cmd_f)(UINT8 **p, INT32 playernum));
 void SendNetXCmd(netxcmd_t id, const void *param, size_t nparam);
 void SendNetXCmd2(netxcmd_t id, const void *param, size_t nparam); // splitsreen player
 void SendKick(UINT8 playernum, UINT8 msg);
+void SendKicksForNode(SINT8 node, UINT8 msg);
+void CL_HandleTimeout(void);
 
 // Create any new ticcmds and broadcast to other players.
 void NetUpdate(void);

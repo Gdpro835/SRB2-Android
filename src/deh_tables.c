@@ -219,6 +219,7 @@ actionpointer_t actionpointers[] =
 	{{A_ChangeColorRelative},    "A_CHANGECOLORRELATIVE"},
 	{{A_ChangeColorAbsolute},    "A_CHANGECOLORABSOLUTE"},
 	{{A_Dye},                    "A_DYE"},
+	{{A_SetTranslation},         "A_SETTRANSLATION"},
 	{{A_MoveRelative},           "A_MOVERELATIVE"},
 	{{A_MoveAbsolute},           "A_MOVEABSOLUTE"},
 	{{A_Thrust},                 "A_THRUST"},
@@ -1933,6 +1934,13 @@ const char *const STATE_LIST[] = { // array length left dynamic for sanity testi
 	"S_SMALLGRABCHAIN",
 	"S_BIGGRABCHAIN",
 
+	// Blue spring on a ball
+	"S_BLUESPRINGBALL",
+	"S_BLUESPRINGBALL2",
+	"S_BLUESPRINGBALL3",
+	"S_BLUESPRINGBALL4",
+	"S_BLUESPRINGBALL5",
+
 	// Yellow spring on a ball
 	"S_YELLOWSPRINGBALL",
 	"S_YELLOWSPRINGBALL2",
@@ -2237,6 +2245,10 @@ const char *const STATE_LIST[] = { // array length left dynamic for sanity testi
 	"S_LAMPPOST2",  // with snow
 	"S_HANGSTAR",
 	"S_MISTLETOE",
+	"S_SSZTREE",
+	"S_SSZTREE_BRANCH",
+	"S_SSZTREE2",
+	"S_SSZTREE2_BRANCH",
 	// Xmas GFZ bushes
 	"S_XMASBLUEBERRYBUSH",
 	"S_XMASBERRYBUSH",
@@ -2357,6 +2369,9 @@ const char *const STATE_LIST[] = { // array length left dynamic for sanity testi
 	"S_DBALL5",
 	"S_DBALL6",
 	"S_EGGSTATUE2",
+	"S_GINE",
+	"S_PPAL",
+	"S_PPEL",
 
 	// Shield Orb
 	"S_ARMA1",
@@ -3544,6 +3559,12 @@ const char *const STATE_LIST[] = { // array length left dynamic for sanity testi
 	"S_YELLOWBRICKDEBRIS",
 
 	"S_NAMECHECK",
+
+	// LJ Knuckles
+	"S_OLDK_STND",
+	"S_OLDK_DIE0",
+	"S_OLDK_DIE1",
+	"S_OLDK_DIE2",
 };
 
 // RegEx to generate this from info.h: ^\tMT_([^,]+), --> \t"MT_\1",
@@ -3891,6 +3912,7 @@ const char *const MOBJTYPE_LIST[] = {  // array length left dynamic for sanity t
 	"MT_BIGMACE", // Big Mace
 	"MT_SMALLGRABCHAIN", // Small Grab Chain
 	"MT_BIGGRABCHAIN", // Big Grab Chain
+	"MT_BLUESPRINGBALL", // Blue spring on a ball
 	"MT_YELLOWSPRINGBALL", // Yellow spring on a ball
 	"MT_REDSPRINGBALL", // Red spring on a ball
 	"MT_SMALLFIREBAR", // Small Firebar
@@ -4014,6 +4036,10 @@ const char *const MOBJTYPE_LIST[] = {  // array length left dynamic for sanity t
 	"MT_LAMPPOST2",  // with snow
 	"MT_HANGSTAR",
 	"MT_MISTLETOE",
+	"MT_SSZTREE",
+	"MT_SSZTREE_BRANCH",
+	"MT_SSZTREE2",
+	"MT_SSZTREE2_BRANCH",
 	// Xmas GFZ bushes
 	"MT_XMASBLUEBERRYBUSH",
 	"MT_XMASBERRYBUSH",
@@ -4093,6 +4119,9 @@ const char *const MOBJTYPE_LIST[] = {  // array length left dynamic for sanity t
 	// Misc scenery
 	"MT_DBALL",
 	"MT_EGGSTATUE2",
+	"MT_GINE",
+	"MT_PPAL",
+	"MT_PPEL",
 
 	// Powerup Indicators
 	"MT_ELEMENTAL_ORB", // Elemental shield mobj
@@ -4320,6 +4349,8 @@ const char *const MOBJTYPE_LIST[] = {  // array length left dynamic for sanity t
 
 	"MT_NAMECHECK",
 	"MT_RAY",
+
+	"MT_OLDK",
 };
 
 const char *const MOBJFLAG_LIST[] = {
@@ -5087,6 +5118,10 @@ struct int_const_s const INT_CONST[] = {
 	{"RF_SHADOWEFFECTS",RF_SHADOWEFFECTS},
 	{"RF_DROPSHADOW",RF_DROPSHADOW},
 
+	// Animation flags
+	{"SPR2F_MASK",SPR2F_MASK},
+	{"SPR2F_SUPER",SPR2F_SUPER},
+
 	// Level flags
 	{"LF_SCRIPTISFILE",LF_SCRIPTISFILE},
 	{"LF_SPEEDMUSIC",LF_SPEEDMUSIC},
@@ -5221,6 +5256,7 @@ struct int_const_s const INT_CONST[] = {
 	{"SF_MARIODAMAGE",SF_MARIODAMAGE},
 	{"SF_MACHINE",SF_MACHINE},
 	{"SF_DASHMODE",SF_DASHMODE},
+	{"SF_FASTWAIT",SF_FASTWAIT},
 	{"SF_FASTEDGE",SF_FASTEDGE},
 	{"SF_MULTIABILITY",SF_MULTIABILITY},
 	{"SF_NONIGHTSROTATION",SF_NONIGHTSROTATION},
@@ -5791,6 +5827,10 @@ struct int_const_s const INT_CONST[] = {
 	{"MB_BUTTON8",MB_BUTTON8},
 	{"MB_SCROLLUP",MB_SCROLLUP},
 	{"MB_SCROLLDOWN",MB_SCROLLDOWN},
+
+	// screen.h constants
+	{"BASEVIDWIDTH",BASEVIDWIDTH},
+	{"BASEVIDHEIGHT",BASEVIDHEIGHT},
 
 	{NULL,0}
 };

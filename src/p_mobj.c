@@ -82,9 +82,15 @@ void P_AddCachedAction(mobj_t *mobj, INT32 statenum)
 //
 static void P_SetupStateAnimation(mobj_t *mobj, state_t *st)
 {
-	INT32 animlength = (mobj->sprite == SPR_PLAY && mobj->skin)
-		? (INT32)(((skin_t *)mobj->skin)->sprites[mobj->sprite2].numframes) - 1
-		: st->var1;
+	INT32 animlength;
+
+	if (mobj->sprite == SPR_PLAY && mobj->skin)
+	{
+		spritedef_t *spritedef = P_GetSkinSpritedef(mobj->skin, mobj->sprite2);
+		animlength = spritedef ? (INT32)(spritedef->numframes) - 1 : -1;
+	}
+	else
+		animlength = st->var1;
 
 	if (!(st->frame & FF_ANIMATE))
 		return;
@@ -135,8 +141,12 @@ FUNCINLINE static ATTRINLINE void P_CycleStateAnimation(mobj_t *mobj)
 	}
 
 	// sprite2 version of above
-	if (mobj->skin && (((++mobj->frame) & FF_FRAMEMASK) >= (UINT32)(((skin_t *)mobj->skin)->sprites[mobj->sprite2].numframes)))
-		mobj->frame &= ~FF_FRAMEMASK;
+	if (mobj->skin)
+	{
+		spritedef_t *spritedef = P_GetSkinSpritedef(mobj->skin, mobj->sprite2);
+		if (spritedef && ((++mobj->frame) & FF_FRAMEMASK) >= (UINT32)(spritedef->numframes))
+			mobj->frame &= ~FF_FRAMEMASK;
+	}
 }
 
 //
@@ -209,7 +219,7 @@ boolean P_SetPlayerMobjState(mobj_t *mobj, statenum_t state)
 		return P_SetPlayerMobjState(mobj, S_PLAY_FALL);
 
 	// Catch swimming versus flying
-	if ((state == S_PLAY_FLY || (state == S_PLAY_GLIDE && skins[player->skin].sprites[SPR2_SWIM].numframes))
+	if ((state == S_PLAY_FLY || (state == S_PLAY_GLIDE && P_GetSkinSpritedef(skins[player->skin], SPR2_SWIM)->numframes))
 	&& player->mo->eflags & MFE_UNDERWATER && !player->skidtime)
 		return P_SetPlayerMobjState(player->mo, S_PLAY_SWIM);
 	else if (state == S_PLAY_SWIM && !(player->mo->eflags & MFE_UNDERWATER))
@@ -327,7 +337,9 @@ boolean P_SetPlayerMobjState(mobj_t *mobj, statenum_t state)
 		mobj->tics = st->tics;
 
 		// Adjust the player's animation speed to match their velocity.
-		if (player->panim == PA_EDGE && (player->charflags & SF_FASTEDGE))
+		if (mobj->state-states == S_PLAY_WAIT && (player->charflags & SF_FASTWAIT))
+			mobj->tics = 5;
+		else if (player->panim == PA_EDGE && (player->charflags & SF_FASTEDGE))
 			mobj->tics = 2;
 		else if (!(disableSpeedAdjust || player->charflags & SF_NOSPEEDADJUST))
 		{
@@ -392,31 +404,26 @@ boolean P_SetPlayerMobjState(mobj_t *mobj, statenum_t state)
 		{
 			skin_t *skin = ((skin_t *)mobj->skin);
 			UINT16 frame = (mobj->frame & FF_FRAMEMASK)+1;
-			UINT8 numframes, spr2;
+			UINT8 numframes;
+			UINT16 spr2;
 
 			if (skin)
 			{
-				UINT16 stateframe = st->frame;
+				spritedef_t *sprdef;
 
-				// Add/Remove FF_SPR2SUPER based on certain conditions
-				if (player->charflags & SF_NOSUPERSPRITES)
-					stateframe = stateframe & ~FF_SPR2SUPER;
-				else if (player->powers[pw_super])
-					stateframe = stateframe | FF_SPR2SUPER;
+				spr2 = P_GetStateSprite2(st);
 
-				if (stateframe & FF_SPR2SUPER)
-				{
-					if (mobj->eflags & MFE_FORCENOSUPER)
-						stateframe = stateframe & ~FF_SPR2SUPER;
-				}
-				else if (mobj->eflags & MFE_FORCESUPER)
-					stateframe = stateframe | FF_SPR2SUPER;
+				// Add or remove SPR2F_SUPER based on certain conditions
+				spr2 = P_ApplySuperFlagToSprite2(spr2, mobj);
 
-				// Get the sprite2 and frame number
-				spr2 = P_GetSkinSprite2(skin, (stateframe & FF_FRAMEMASK), mobj->player);
-				numframes = skin->sprites[spr2].numframes;
+				// Get the needed sprite2 and frame number
+				spr2 = P_GetSkinSprite2(skin, spr2, mobj->player);
 
-				if (state == S_PLAY_STND && (spr2 & FF_SPR2SUPER) && skin->sprites[SPR2_WAIT|FF_SPR2SUPER].numframes == 0)
+				sprdef = P_GetSkinSpritedef(skin, spr2);
+				numframes = sprdef ? sprdef->numframes : 0;
+
+				if (state == S_PLAY_STND && (spr2 & SPR2F_SUPER)
+					&& !P_IsValidSprite2(skin, SPR2_WAIT|SPR2F_SUPER))
 					mobj->tics = -1;	// If no super wait, don't wait at all
 			}
 			else
@@ -429,12 +436,19 @@ boolean P_SetPlayerMobjState(mobj_t *mobj, statenum_t state)
 			if (mobj->sprite != SPR_PLAY)
 			{
 				mobj->sprite = SPR_PLAY;
-				frame = 0;
+				frame = P_GetSprite2StateFrame(st);
 			}
 			else if (mobj->sprite2 != spr2)
 			{
-				if ((st->frame & FF_SPR2MIDSTART) && numframes && P_RandomChance(FRACUNIT/2))
-					frame = numframes/2;
+				if (st->frame & FF_SPR2MIDSTART)
+				{
+					if (numframes && P_RandomChance(FRACUNIT/2))
+						frame = numframes/2;
+					else
+						frame = 0;
+				}
+				else if (numframes)
+					frame = P_GetSprite2StateFrame(st) % numframes;
 				else
 					frame = 0;
 			}
@@ -538,26 +552,26 @@ boolean P_SetMobjState(mobj_t *mobj, statenum_t state)
 		{
 			skin_t *skin = ((skin_t *)mobj->skin);
 			UINT16 frame = (mobj->frame & FF_FRAMEMASK)+1;
-			UINT8 numframes, spr2;
+			UINT8 numframes;
+			UINT16 spr2;
 
 			if (skin)
 			{
-				UINT16 stateframe = st->frame;
+				spritedef_t *sprdef;
 
-				// Add/Remove FF_SPR2SUPER based on certain conditions
-				if (stateframe & FF_SPR2SUPER)
-				{
-					if (mobj->eflags & MFE_FORCENOSUPER)
-						stateframe = stateframe & ~FF_SPR2SUPER;
-				}
-				else if (mobj->eflags & MFE_FORCESUPER)
-					stateframe = stateframe | FF_SPR2SUPER;
+				spr2 = P_GetStateSprite2(st);
 
-				// Get the sprite2 and frame number
-				spr2 = P_GetSkinSprite2(skin, (stateframe & FF_FRAMEMASK), NULL);
-				numframes = skin->sprites[spr2].numframes;
+				// Add or remove SPR2F_SUPER based on certain conditions
+				spr2 = P_ApplySuperFlagToSprite2(spr2, mobj);
 
-				if (state == S_PLAY_STND && (spr2 & FF_SPR2SUPER) && skin->sprites[SPR2_WAIT|FF_SPR2SUPER].numframes == 0)
+				// Get the needed sprite2 and frame number
+				spr2 = P_GetSkinSprite2(skin, spr2, NULL);
+
+				sprdef = P_GetSkinSpritedef(skin, spr2);
+				numframes = sprdef ? sprdef->numframes : 0;
+
+				if (state == S_PLAY_STND && (spr2 & SPR2F_SUPER)
+					&& !P_IsValidSprite2(skin, SPR2_WAIT|SPR2F_SUPER))
 					mobj->tics = -1;	// If no super wait, don't wait at all
 			}
 			else
@@ -570,12 +584,19 @@ boolean P_SetMobjState(mobj_t *mobj, statenum_t state)
 			if (mobj->sprite != SPR_PLAY)
 			{
 				mobj->sprite = SPR_PLAY;
-				frame = 0;
+				frame = P_GetSprite2StateFrame(st);
 			}
 			else if (mobj->sprite2 != spr2)
 			{
-				if ((st->frame & FF_SPR2MIDSTART) && numframes && P_RandomChance(FRACUNIT/2))
-					frame = numframes/2;
+				if (st->frame & FF_SPR2MIDSTART)
+				{
+					if (numframes && P_RandomChance(FRACUNIT/2))
+						frame = numframes/2;
+					else
+						frame = 0;
+				}
+				else if (numframes)
+					frame = P_GetSprite2StateFrame(st) % numframes;
 				else
 					frame = 0;
 			}
@@ -1778,14 +1799,15 @@ bustupdone:
 //
 // P_CheckSkyHit
 //
-static boolean P_CheckSkyHit(mobj_t *mo)
+boolean P_CheckSkyHit(mobj_t *mo, line_t *line)
 {
-	if (ceilingline && ceilingline->backsector
-		&& ceilingline->backsector->ceilingpic == skyflatnum
-		&& ceilingline->frontsector
-		&& ceilingline->frontsector->ceilingpic == skyflatnum
-		&& (mo->z >= ceilingline->frontsector->ceilingheight
-		|| mo->z >= ceilingline->backsector->ceilingheight))
+	if (line && (line->special == 41 ||
+		(line->backsector
+		&& line->backsector->ceilingpic == skyflatnum
+		&& line->frontsector
+		&& line->frontsector->ceilingpic == skyflatnum
+		&& (mo->z >= line->frontsector->ceilingheight
+		|| mo->z >= line->backsector->ceilingheight))))
 			return true;
 	return false;
 }
@@ -1892,7 +1914,7 @@ void P_XYMovement(mobj_t *mo)
 					mo->fuse += ((5 - mo->threshold) * TICRATE);
 
 				// Check for hit against sky here
-				if (P_CheckSkyHit(mo))
+				if (P_CheckSkyHit(mo, ceilingline))
 				{
 					// Hack to prevent missiles exploding
 					// against the sky.
@@ -1912,7 +1934,7 @@ void P_XYMovement(mobj_t *mo)
 			mo->flags &= ~MF_STICKY; //Don't check again!
 
 			// Check for hit against sky here
-			if (P_CheckSkyHit(mo))
+			if (P_CheckSkyHit(mo, ceilingline))
 			{
 				// Hack to prevent missiles exploding
 				// against the sky.
@@ -1971,7 +1993,7 @@ void P_XYMovement(mobj_t *mo)
 		else if (mo->flags & MF_MISSILE)
 		{
 			// explode a missile
-			if (P_CheckSkyHit(mo))
+			if (P_CheckSkyHit(mo, ceilingline))
 			{
 				// Hack to prevent missiles exploding
 				// against the sky.
@@ -8116,6 +8138,10 @@ static boolean P_MobjBossThink(mobj_t *mobj)
 		case MT_METALSONIC_BATTLE:
 			P_Boss9Thinker(mobj);
 			break;
+		case MT_OLDK:
+			if (mobj->health <= 0)
+				mobj->momz -= (2*FRACUNIT)/3;
+			break;
 		default: // Generic SOC-made boss
 			if (mobj->flags2 & MF2_SKULLFLY)
 				P_SpawnGhostMobj(mobj);
@@ -10596,6 +10622,7 @@ static fixed_t P_DefaultMobjShadowScale (mobj_t *thing)
 		case MT_SMALLGRABCHAIN:
 		case MT_BIGGRABCHAIN:
 
+		case MT_BLUESPRINGBALL:
 		case MT_YELLOWSPRINGBALL:
 		case MT_REDSPRINGBALL:
 
@@ -10756,6 +10783,7 @@ mobj_t *P_SpawnMobj(fixed_t x, fixed_t y, fixed_t z, mobjtype_t type)
 
 	// Sprite rendering
 	mobj->blendmode = AST_TRANSLUCENT;
+	mobj->alpha = FRACUNIT;
 	mobj->spritexscale = mobj->spriteyscale = mobj->scale;
 	mobj->spritexoffset = mobj->spriteyoffset = 0;
 	mobj->floorspriteslope = NULL;
@@ -10985,10 +11013,10 @@ mobj_t *P_SpawnMobj(fixed_t x, fixed_t y, fixed_t z, mobjtype_t type)
 				nummaprings++;
 			break;
 		case MT_METALSONIC_RACE:
-			mobj->skin = &skins[5];
+			mobj->skin = skins[5];
 			/* FALLTHRU */
 		case MT_METALSONIC_BATTLE:
-			mobj->color = skins[5].prefcolor;
+			mobj->color = skins[5]->prefcolor;
 			sc = 5;
 			break;
 		case MT_FANG:
@@ -11061,7 +11089,7 @@ mobj_t *P_SpawnMobj(fixed_t x, fixed_t y, fixed_t z, mobjtype_t type)
 
 	if (mobj->skin) // correct inadequecies above.
 	{
-		mobj->sprite2 = P_GetSkinSprite2(mobj->skin, (mobj->frame & FF_FRAMEMASK), NULL);
+		mobj->sprite2 = P_GetSkinSprite2(mobj->skin, P_GetStateSprite2(mobj->state), NULL);
 		mobj->frame &= ~FF_FRAMEMASK;
 	}
 
@@ -11683,7 +11711,7 @@ void P_SpawnPlayer(INT32 playernum)
 	// set 'spritedef' override in mobj for player skins.. (see ProjectSprite)
 	// (usefulness: when body mobj is detached from player (who respawns),
 	// the dead body mobj retains the skin through the 'spritedef' override).
-	mobj->skin = &skins[p->skin];
+	mobj->skin = skins[p->skin];
 	P_SetupStateAnimation(mobj, mobj->state);
 
 	mobj->health = 1;
@@ -11691,14 +11719,14 @@ void P_SpawnPlayer(INT32 playernum)
 
 	p->bonustime = false;
 	p->realtime = leveltime;
-	p->followitem = skins[p->skin].followitem;
+	p->followitem = skins[p->skin]->followitem;
 
 	// Make sure player's stats are reset if they were in dashmode!
 	if (p->dashmode)
 	{
 		p->dashmode = 0;
-		p->normalspeed = skins[p->skin].normalspeed;
-		p->jumpfactor = skins[p->skin].jumpfactor;
+		p->normalspeed = skins[p->skin]->normalspeed;
+		p->jumpfactor = skins[p->skin]->jumpfactor;
 	}
 
 	// Clear lastlinehit and lastsidehit
@@ -11714,7 +11742,7 @@ void P_SpawnPlayer(INT32 playernum)
 	P_FlashPal(p, 0, 0); // Resets
 
 	// Set bounds accurately.
-	mobj->radius = FixedMul(skins[p->skin].radius, mobj->scale);
+	mobj->radius = FixedMul(skins[p->skin]->radius, mobj->scale);
 	mobj->height = P_GetPlayerHeight(p);
 
 	if (!leveltime && !p->spectator && ((maptol & TOL_NIGHTS) == TOL_NIGHTS) != (G_IsSpecialStage(gamemap))) // non-special NiGHTS stage or special non-NiGHTS stage
@@ -13088,6 +13116,32 @@ static boolean P_SetupSpawnedMapThing(mapthing_t *mthing, mobj_t *mobj, boolean 
 			P_ReturnThrustX(mobj, mobjangle, 4 << FRACBITS),
 			P_ReturnThrustY(mobj, mobjangle, 4 << FRACBITS),
 			0, ((mobj->type == MT_CEZPOLE1) ? MT_CEZBANNER1 : MT_CEZBANNER2))->angle = mobjangle + ANGLE_90;
+	}
+	break;
+	case MT_SSZTREE:
+	{ // Spawn the branches
+		INT32 i;
+		mobj_t *branch;
+		for (i = 0; i < 5; i++)
+		{
+			branch = P_SpawnMobjFromMobj(mobj, 0, 0, 0, MT_SSZTREE_BRANCH);
+			if (P_MobjWasRemoved(branch))
+				continue;
+			branch->angle = mobj->angle + FixedAngle(i*72*FRACUNIT);
+		}
+	}
+	break;
+	case MT_SSZTREE2:
+	{ // Spawn the branches
+		INT32 i;
+		mobj_t *branch;
+		for (i = 0; i < 5; i++)
+		{
+			branch = P_SpawnMobjFromMobj(mobj, 0, 0, 0, MT_SSZTREE2_BRANCH);
+			if (P_MobjWasRemoved(branch))
+				continue;
+			branch->angle = mobj->angle + FixedAngle(i*72*FRACUNIT);
+		}
 	}
 	break;
 	case MT_HHZTREE_TOP:

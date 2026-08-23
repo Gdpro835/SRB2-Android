@@ -49,6 +49,7 @@
 #include "p_setup.h"
 #include "p_saveg.h"
 #include "r_main.h"
+#include "r_translation.h"
 #include "r_local.h"
 #include "s_sound.h"
 #include "st_stuff.h"
@@ -60,7 +61,7 @@
 #include "m_cheat.h"
 #include "y_inter.h"
 #include "p_local.h" // chasecam
-#include "mserv.h" // ms_RoomId
+#include "mserv.h" // cv_masterserver_room_id
 #include "m_misc.h" // screenshot functionality
 #include "deh_tables.h" // Dehacked list test
 #include "m_cond.h" // condition initialization
@@ -1560,6 +1561,8 @@ void D_SRB2Main(void)
 	// setup loading screen
 	SCR_Startup();
 
+	PaletteRemap_Init();
+
 	HU_Init();
 
 	CON_Init();
@@ -1697,7 +1700,7 @@ void D_SRB2Main(void)
 	{
 		if (!M_IsNextParm())
 			I_Error("usage: -room <room_id>\nCheck the Master Server's webpage for room ID numbers.\n");
-		ms_RoomId = atoi(M_GetNextParm());
+		CV_SetValue(&cv_masterserver_room_id, atoi(M_GetNextParm()));
 
 #ifdef UPDATE_ALERT
 		GetMODVersion_Console();

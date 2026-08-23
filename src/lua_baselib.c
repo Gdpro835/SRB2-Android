@@ -671,7 +671,7 @@ static int lib_pIsValidSprite2(lua_State *L)
 	INLEVEL
 	if (!mobj)
 		return LUA_ErrInvalid(L, "mobj_t");
-	lua_pushboolean(L, (mobj->skin && (((skin_t *)mobj->skin)->sprites[spr2].numframes)));
+	lua_pushboolean(L, (mobj->skin && (P_GetSkinSpritedef(((skin_t *)mobj->skin), spr2)->numframes)));
 	return 1;
 }
 
@@ -1718,6 +1718,20 @@ static int lib_pSwitchShield(lua_State *L)
 	return 0;
 }
 
+static int lib_pDoFollowMobj(lua_State *L)
+{
+	player_t *player = *((player_t **)luaL_checkudata(L, 1, META_PLAYER));
+	mobj_t *followmobj = *((mobj_t **)luaL_checkudata(L, 2, META_MOBJ));
+	NOHUD
+	INLEVEL
+	if (!player)
+		return LUA_ErrInvalid(L, "player_t");
+	if (!followmobj)
+		return LUA_ErrInvalid(L, "mobj_t");
+	P_DoFollowMobj(player, followmobj);
+	return 0;
+}
+
 static int lib_pPlayerCanEnterSpinGaps(lua_State *L)
 {
 	player_t *player = *((player_t **)luaL_checkudata(L, 1, META_PLAYER));
@@ -2240,6 +2254,17 @@ static int lib_pDoSuperTransformation(lua_State *L)
 	if (!player)
 		return LUA_ErrInvalid(L, "player_t");
 	P_DoSuperTransformation(player, giverings);
+	return 0;
+}
+
+static int lib_pDoSuperDetransformation(lua_State *L)
+{
+	player_t *player = *((player_t **)luaL_checkudata(L, 1, META_PLAYER));
+	NOHUD
+	INLEVEL
+	if (!player)
+		return LUA_ErrInvalid(L, "player_t");
+	P_DoSuperDetransformation(player);
 	return 0;
 }
 
@@ -3573,6 +3598,7 @@ static int lib_gAddPlayer(lua_State *L)
 
 	newplayer->jointime = 0;
 	newplayer->quittime = 0;
+	newplayer->lastinputtime = 0;
 
 	// Read the skin argument (defaults to Sonic)
 	if (!lua_isnoneornil(L, 1))
@@ -3585,10 +3611,10 @@ static int lib_gAddPlayer(lua_State *L)
 	if (!lua_isnoneornil(L, 2))
 		newplayer->skincolor = R_GetColorByName(luaL_checkstring(L, 2));
 	else
-		newplayer->skincolor = skins[skinnum].prefcolor;
+		newplayer->skincolor = skins[skinnum]->prefcolor;
 
 	// Set the bot default name as the skin
-	strcpy(player_names[newplayernum], skins[skinnum].realname);
+	strcpy(player_names[newplayernum], skins[skinnum]->realname);
 
 	// Read the bot name, if given
 	if (!lua_isnoneornil(L, 3))
@@ -4010,6 +4036,298 @@ static int lib_getTimeMicros(lua_State *L)
 	return 1;
 }
 
+
+// Backported from SRB2 2.2.15
+static int lib_tofixed(lua_State *L)
+{
+	const char *arg = luaL_checkstring(L, 1);
+	char *end;
+	float f = strtof(arg, &end);
+	if (*end != '\0')
+		lua_pushnil(L);
+	else
+		lua_pushnumber(L, FLOAT_TO_FIXED(f));
+	return 1;
+}
+
+static int lib_pCheckSkyHit(lua_State *L)
+{
+	mobj_t *mobj = *((mobj_t **)luaL_checkudata(L, 1, META_MOBJ));
+	line_t *line = *((line_t **)luaL_checkudata(L, 2, META_LINE));
+	//HUDSAFE
+	INLEVEL
+	if (!mobj)
+		return LUA_ErrInvalid(L, "mobj_t");
+	if (!line)
+		return LUA_ErrInvalid(L, "line_t");
+	lua_pushboolean(L, P_CheckSkyHit(mobj, line));
+	return 1;
+}
+
+static int lib_pIsLocalPlayer(lua_State *L)
+{
+	player_t *player = *((player_t **)luaL_checkudata(L, 1, META_PLAYER));
+	//NOHUD
+	//INLEVEL
+	if (!player)
+		return LUA_ErrInvalid(L, "player_t");
+	lua_pushboolean(L, P_IsLocalPlayer(player));
+	return 1;
+}
+
+static int lib_pGivePlayerSpheres(lua_State *L)
+{
+	player_t *player = *((player_t **)luaL_checkudata(L, 1, META_PLAYER));
+	INT32 num_spheres = (INT32)luaL_checkinteger(L, 2);
+	NOHUD
+	INLEVEL
+	if (!player)
+		return LUA_ErrInvalid(L, "player_t");
+	P_GivePlayerSpheres(player, num_spheres);
+	return 0;
+}
+
+static int lib_pInstaThrustEvenIn2D(lua_State *L)
+{
+	mobj_t *mo = *((mobj_t **)luaL_checkudata(L, 1, META_MOBJ));
+	angle_t angle = luaL_checkangle(L, 2);
+	fixed_t move = luaL_checkfixed(L, 3);
+	NOHUD
+	INLEVEL
+	if (!mo)
+		return LUA_ErrInvalid(L, "mobj_t");
+	P_InstaThrustEvenIn2D(mo, angle, move);
+	return 0;
+}
+
+static int lib_pResetCamera(lua_State *L)
+{
+	player_t *player = *((player_t **)luaL_checkudata(L, 1, META_PLAYER));
+	camera_t *cam = *((camera_t **)luaL_checkudata(L, 2, META_CAMERA));
+
+	if (!player)
+		return LUA_ErrInvalid(L, "player_t");
+	if (!cam)
+		return LUA_ErrInvalid(L, "camera_t");
+	P_ResetCamera(player, cam);
+	return 0;
+}
+
+static int lib_pDoSpinDashDust(lua_State *L)
+{
+	player_t *player = *((player_t **)luaL_checkudata(L, 1, META_PLAYER));
+	NOHUD
+	INLEVEL
+	if (!player)
+		return LUA_ErrInvalid(L, "player_t");
+	P_DoSpinDashDust(player);
+	return 0;
+}
+
+static int lib_pDoTailsOverlay(lua_State *L)
+{
+	player_t *player = *((player_t **)luaL_checkudata(L, 1, META_PLAYER));
+	mobj_t *tails = *((mobj_t **)luaL_checkudata(L, 2, META_MOBJ));
+	NOHUD
+	INLEVEL
+	if (!player)
+		return LUA_ErrInvalid(L, "player_t");
+	if (!tails)
+		return LUA_ErrInvalid(L, "mobj_t");
+	P_DoTailsOverlay(player, tails);
+	return 0;
+}
+
+static int lib_pDoMetalJetFume(lua_State *L)
+{
+	player_t *player = *((player_t **)luaL_checkudata(L, 1, META_PLAYER));
+	mobj_t *fume = *((mobj_t **)luaL_checkudata(L, 2, META_MOBJ));
+	NOHUD
+	INLEVEL
+	if (!player)
+		return LUA_ErrInvalid(L, "player_t");
+	if (!fume)
+		return LUA_ErrInvalid(L, "mobj_t");
+	P_DoMetalJetFume(player, fume);
+	return 0;
+}
+
+static int lib_pTouchSpecialThing(lua_State *L)
+{
+	mobj_t *special = *((mobj_t **)luaL_checkudata(L, 1, META_MOBJ));
+	mobj_t *toucher = *((mobj_t **)luaL_checkudata(L, 2, META_MOBJ));
+	boolean heightcheck = lua_optboolean(L, 3);
+	NOHUD
+	INLEVEL
+	if (!special || !toucher)
+		return LUA_ErrInvalid(L, "mobj_t");
+	if (!toucher->player)
+		return luaL_error(L, "P_TouchSpecialThing requires a valid toucher.player.");
+	P_TouchSpecialThing(special, toucher, heightcheck);
+	return 0;
+}
+
+static int lib_pThrustEvenIn2D(lua_State *L)
+{
+	mobj_t *mo = *((mobj_t **)luaL_checkudata(L, 1, META_MOBJ));
+	angle_t angle = luaL_checkangle(L, 2);
+	fixed_t move = luaL_checkfixed(L, 3);
+	NOHUD
+	INLEVEL
+	if (!mo)
+		return LUA_ErrInvalid(L, "mobj_t");
+	P_ThrustEvenIn2D(mo, angle, move);
+	return 0;
+}
+
+static int lib_pVectorInstaThrust(lua_State *L)
+{
+    fixed_t xa = luaL_checkfixed(L, 1);
+    fixed_t xb = luaL_checkfixed(L, 2);
+    fixed_t xc = luaL_checkfixed(L, 3);
+    fixed_t ya = luaL_checkfixed(L, 4);
+    fixed_t yb = luaL_checkfixed(L, 5);
+    fixed_t yc = luaL_checkfixed(L, 6);
+    fixed_t za = luaL_checkfixed(L, 7);
+    fixed_t zb = luaL_checkfixed(L, 8);
+    fixed_t zc = luaL_checkfixed(L, 9);
+    fixed_t momentum = luaL_checkfixed(L, 10);
+	mobj_t *mo = *((mobj_t **)luaL_checkudata(L, 11, META_MOBJ));
+	NOHUD
+	INLEVEL
+	if (!mo)
+		return LUA_ErrInvalid(L, "mobj_t");
+	P_VectorInstaThrust(xa, xb, xc, ya, yb, yc, za, zb, zc, momentum, mo);
+	return 0;
+}
+
+
+static int lib_pLineIsBlocking(lua_State *L)
+{
+	mobj_t *mo = *((mobj_t **)luaL_checkudata(L, 1, META_MOBJ));
+	line_t *line = *((line_t **)luaL_checkudata(L, 2, META_LINE));
+	NOHUD
+	INLEVEL
+	if (!mo)
+		return LUA_ErrInvalid(L, "mobj_t");
+	if (!line)
+		return LUA_ErrInvalid(L, "line_t");
+
+	// P_LineOpening in P_LineIsBlocking sets these variables.
+	// We want to keep their old values after so that whatever
+	// map collision code uses them doesn't get messed up.
+	fixed_t oldopentop = opentop;
+	fixed_t oldopenbottom = openbottom;
+	fixed_t oldopenrange = openrange;
+	fixed_t oldlowfloor = lowfloor;
+	fixed_t oldhighceiling = highceiling;
+	pslope_t *oldopentopslope = opentopslope;
+	pslope_t *oldopenbottomslope = openbottomslope;
+	ffloor_t *oldopenfloorrover = openfloorrover;
+	ffloor_t *oldopenceilingrover = openceilingrover;
+
+	lua_pushboolean(L, P_LineIsBlocking(mo, line));
+
+	opentop = oldopentop;
+	openbottom = oldopenbottom;
+	openrange = oldopenrange;
+	lowfloor = oldlowfloor;
+	highceiling = oldhighceiling;
+	opentopslope = oldopentopslope;
+	openbottomslope = oldopenbottomslope;
+	openfloorrover = oldopenfloorrover;
+	openceilingrover = oldopenceilingrover;
+
+	return 1;
+}
+
+static int lib_pGetSectorLightLevelAt(lua_State *L)
+{
+	boolean has_sector = false;
+	sector_t *sector = NULL;
+	if (!lua_isnoneornil(L, 1))
+	{
+		has_sector = true;
+		sector = *((sector_t **)luaL_checkudata(L, 1, META_SECTOR));
+	}
+	fixed_t x = luaL_checkfixed(L, 2);
+	fixed_t y = luaL_checkfixed(L, 3);
+	fixed_t z = luaL_checkfixed(L, 4);
+	INLEVEL
+	if (has_sector && !sector)
+		return LUA_ErrInvalid(L, "sector_t");
+	if (sector)
+		lua_pushinteger(L, P_GetLightLevelFromSectorAt(sector, x, y, z));
+	else
+		lua_pushinteger(L, P_GetSectorLightLevelAt(x, y, z));
+	return 1;
+}
+
+static int lib_pGetSectorColormapAt(lua_State *L)
+{
+	boolean has_sector = false;
+	sector_t *sector = NULL;
+	if (!lua_isnoneornil(L, 1))
+	{
+		has_sector = true;
+		sector = *((sector_t **)luaL_checkudata(L, 1, META_SECTOR));
+	}
+	fixed_t x = luaL_checkfixed(L, 2);
+	fixed_t y = luaL_checkfixed(L, 3);
+	fixed_t z = luaL_checkfixed(L, 4);
+	INLEVEL
+	if (has_sector && !sector)
+		return LUA_ErrInvalid(L, "sector_t");
+	extracolormap_t *exc;
+	if (sector)
+		exc = P_GetColormapFromSectorAt(sector, x, y, z);
+	else
+		exc = P_GetSectorColormapAt(x, y, z);
+	LUA_PushUserdata(L, exc, META_EXTRACOLORMAP);
+	return 1;
+}
+
+
+static int lib_pGetStateSprite2(lua_State *L)
+{
+	int statenum = luaL_checkinteger(L, 1);
+	if (statenum < 0 || statenum >= NUMSTATES)
+		return luaL_error(L, "state %d out of range (0 - %d)", statenum, NUMSTATES-1);
+
+	lua_pushinteger(L, P_GetStateSprite2(&states[statenum]));
+	return 1;
+}
+
+static int lib_pGetSprite2StateFrame(lua_State *L)
+{
+	int statenum = luaL_checkinteger(L, 1);
+	if (statenum < 0 || statenum >= NUMSTATES)
+		return luaL_error(L, "state %d out of range (0 - %d)", statenum, NUMSTATES-1);
+
+	lua_pushinteger(L, P_GetSprite2StateFrame(&states[statenum]));
+	return 1;
+}
+
+static int lib_pIsStateSprite2Super(lua_State *L)
+{
+	int statenum = luaL_checkinteger(L, 1);
+	if (statenum < 0 || statenum >= NUMSTATES)
+		return luaL_error(L, "state %d out of range (0 - %d)", statenum, NUMSTATES-1);
+
+	lua_pushboolean(L, P_IsStateSprite2Super(&states[statenum]));
+	return 1;
+}
+
+static int lib_pGetSuperSprite2(lua_State *L)
+{
+	int animID = luaL_checkinteger(L, 1) & SPR2F_MASK;
+	if (animID < 0 || animID >= NUMPLAYERSPRITES)
+		return luaL_error(L, "sprite2 %d out of range (0 - %d)", animID, NUMPLAYERSPRITES-1);
+
+	lua_pushinteger(L, animID | SPR2F_SUPER);
+	return 1;
+}
+
 static luaL_Reg lib[] = {
 	{"print", lib_print},
 	{"chatprint", lib_chatprint},
@@ -4018,6 +4336,7 @@ static luaL_Reg lib[] = {
 	{"registerMetatable", lib_registerMetatable},
 	{"userdataMetatable", lib_userdataMetatable},
 	{"IsPlayerAdmin", lib_isPlayerAdmin},
+	{"tofixed", lib_tofixed},
 	{"reserveLuabanks", lib_reserveLuabanks},
 
 	// m_menu
@@ -4054,6 +4373,7 @@ static luaL_Reg lib[] = {
 	// p_mobj
 	// don't add P_SetMobjState or P_SetPlayerMobjState, use "mobj.state = S_NEWSTATE" instead.
 	{"P_SpawnMobj",lib_pSpawnMobj},
+	{"P_CheckSkyHit",lib_pCheckSkyHit},
 	{"P_SpawnMobjFromMobj",lib_pSpawnMobjFromMobj},
 	{"P_RemoveMobj",lib_pRemoveMobj},
 	{"P_IsValidSprite2", lib_pIsValidSprite2},
@@ -4100,6 +4420,8 @@ static luaL_Reg lib[] = {
 	{"P_PlayerInPain",lib_pPlayerInPain},
 	{"P_DoPlayerPain",lib_pDoPlayerPain},
 	{"P_ResetPlayer",lib_pResetPlayer},
+	{"P_IsLocalPlayer",lib_pIsLocalPlayer},
+	{"P_ResetCamera",lib_pResetCamera},
 	{"P_PlayerCanDamage",lib_pPlayerCanDamage},
 	{"P_PlayerFullbright",lib_pPlayerFullbright},
 	{"P_IsObjectInGoop",lib_pIsObjectInGoop},
@@ -4115,6 +4437,7 @@ static luaL_Reg lib[] = {
 	{"P_SpawnGhostMobj",lib_pSpawnGhostMobj},
 	{"P_GivePlayerRings",lib_pGivePlayerRings},
 	{"P_GivePlayerLives",lib_pGivePlayerLives},
+	{"P_GivePlayerSpheres",lib_pGivePlayerSpheres},
 	{"P_GiveCoopLives",lib_pGiveCoopLives},
 	{"P_ResetScore",lib_pResetScore},
 	{"P_DoJumpShield",lib_pDoJumpShield},
@@ -4126,6 +4449,7 @@ static luaL_Reg lib[] = {
 	{"P_DoPlayerFinish",lib_pDoPlayerFinish},
 	{"P_DoPlayerExit",lib_pDoPlayerExit},
 	{"P_InstaThrust",lib_pInstaThrust},
+	{"P_InstaThrustEvenIn2D",lib_pInstaThrustEvenIn2D},
 	{"P_ReturnThrustX",lib_pReturnThrustX},
 	{"P_ReturnThrustY",lib_pReturnThrustY},
 	{"P_LookForEnemies",lib_pLookForEnemies},
@@ -4134,10 +4458,14 @@ static luaL_Reg lib[] = {
 	{"P_HomingAttack",lib_pHomingAttack},
 	{"P_SuperReady",lib_pSuperReady},
 	{"P_DoJump",lib_pDoJump},
+	{"P_DoSpinDashDust",lib_pDoSpinDashDust},
+	{"P_DoTailsOverlay",lib_pDoTailsOverlay},
+	{"P_DoMetalJetFume",lib_pDoMetalJetFume},
 	{"P_SpawnThokMobj",lib_pSpawnThokMobj},
 	{"P_SpawnSpinMobj",lib_pSpawnSpinMobj},
 	{"P_Telekinesis",lib_pTelekinesis},
 	{"P_SwitchShield",lib_pSwitchShield},
+	{"P_DoFollowMobj",lib_pDoFollowMobj},
 	{"P_PlayerCanEnterSpinGaps",lib_pPlayerCanEnterSpinGaps},
 	{"P_PlayerShouldUseSpinHeight",lib_pPlayerShouldUseSpinHeight},
 
@@ -4147,6 +4475,7 @@ static luaL_Reg lib[] = {
 	{"P_Move",lib_pMove},
 	{"P_TeleportMove",lib_pTeleportMove},
 	{"P_SetOrigin",lib_pSetOrigin},
+	{"P_LineIsBlocking",lib_pLineIsBlocking},
 	{"P_MoveOrigin",lib_pMoveOrigin},
 	{"P_SlideMove",lib_pSlideMove},
 	{"P_BounceMove",lib_pBounceMove},
@@ -4155,6 +4484,8 @@ static luaL_Reg lib[] = {
 	{"P_RadiusAttack",lib_pRadiusAttack},
 	{"P_FloorzAtPos",lib_pFloorzAtPos},
 	{"P_CeilingzAtPos",lib_pCeilingzAtPos},
+	{"P_GetSectorLightLevelAt",lib_pGetSectorLightLevelAt},
+	{"P_GetSectorColormapAt",lib_pGetSectorColormapAt},
 	{"P_DoSpring",lib_pDoSpring},
 	{"P_TryCameraMove", lib_pTryCameraMove},
 	{"P_TeleportCameraMove", lib_pTeleportCameraMove},
@@ -4162,6 +4493,7 @@ static luaL_Reg lib[] = {
 	// p_inter
 	{"P_RemoveShield",lib_pRemoveShield},
 	{"P_DamageMobj",lib_pDamageMobj},
+	{"P_TouchSpecialThing",lib_pTouchSpecialThing},
 	{"P_KillMobj",lib_pKillMobj},
 	{"P_PlayerRingBurst",lib_pPlayerRingBurst},
 	{"P_PlayerWeaponPanelBurst",lib_pPlayerWeaponPanelBurst},
@@ -4179,8 +4511,11 @@ static luaL_Reg lib[] = {
 
 	// p_spec
 	{"P_Thrust",lib_pThrust},
+	{"P_ThrustEvenIn2D",lib_pThrustEvenIn2D},
+	{"P_VectorInstaThrust",lib_pVectorInstaThrust},
 	{"P_SetMobjStateNF",lib_pSetMobjStateNF},
 	{"P_DoSuperTransformation",lib_pDoSuperTransformation},
+	{"P_DoSuperDetransformation",lib_pDoSuperDetransformation},
 	{"P_ExplodeMissile",lib_pExplodeMissile},
 	{"P_MobjTouchingSectorSpecial",lib_pMobjTouchingSectorSpecial},
 	{"P_ThingOnSpecial3DFloor",lib_pThingOnSpecial3DFloor},
@@ -4222,6 +4557,10 @@ static luaL_Reg lib[] = {
 	{"R_Frame2Char",lib_rFrame2Char},
 	{"R_SetPlayerSkin",lib_rSetPlayerSkin},
 	{"R_SkinUsable",lib_rSkinUsable},
+	{"P_GetStateSprite2",lib_pGetStateSprite2},
+	{"P_GetSprite2StateFrame",lib_pGetSprite2StateFrame},
+	{"P_IsStateSprite2Super",lib_pIsStateSprite2Super},
+	{"P_GetSuperSprite2",lib_pGetSuperSprite2},
 
 	// r_data
 	{"R_CheckTextureNumForName",lib_rCheckTextureNumForName},

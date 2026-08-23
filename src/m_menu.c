@@ -2728,7 +2728,7 @@ void Nextmap_OnChange(void)
 		SP_NightsAttackMenu[naghost].status = IT_DISABLED;
 
 		// Check if file exists, if not, disable REPLAY option
-		sprintf(tabase,"%s"PATHSEP"replay"PATHSEP"%s"PATHSEP"%s-%s",srb2home, timeattackfolder, G_BuildMapName(cv_nextmap.value), skins[cv_chooseskin.value-1].name);
+		sprintf(tabase,"%s"PATHSEP"replay"PATHSEP"%s"PATHSEP"%s-%s",srb2home, timeattackfolder, G_BuildMapName(cv_nextmap.value), skins[cv_chooseskin.value-1]->name);
 
 #ifdef OLDNREPLAYNAME
 		sprintf(tabaseold,"%s"PATHSEP"replay"PATHSEP"%s"PATHSEP"%s",srb2home, timeattackfolder, G_BuildMapName(cv_nextmap.value));
@@ -2799,7 +2799,7 @@ void Nextmap_OnChange(void)
 		SP_TimeAttackMenu[taghost].status = IT_DISABLED;
 
 		// Check if file exists, if not, disable REPLAY option
-		sprintf(tabase,"%s"PATHSEP"replay"PATHSEP"%s"PATHSEP"%s-%s",srb2home, timeattackfolder, G_BuildMapName(cv_nextmap.value), skins[cv_chooseskin.value-1].name);
+		sprintf(tabase,"%s"PATHSEP"replay"PATHSEP"%s"PATHSEP"%s-%s",srb2home, timeattackfolder, G_BuildMapName(cv_nextmap.value), skins[cv_chooseskin.value-1]->name);
 		for (i = 0; i < 5; i++) {
 			SP_ReplayMenu[i].status = IT_DISABLED;
 			SP_GuestReplayMenu[i].status = IT_DISABLED;
@@ -4010,7 +4010,7 @@ static void M_ChangeCvar(INT32 choice)
 		{
 			SINT8 skinno = R_SkinAvailable(cv_chooseskin.string);
 			if (skinno != -1)
-				CV_SetValue(cv,skins[skinno].prefcolor);
+				CV_SetValue(cv,skins[skinno]->prefcolor);
 			return;
 		}
 		CV_Set(cv,cv->defaultvalue);
@@ -4179,14 +4179,14 @@ static const char *M_LongestCharacterName(void)
 	size_t len, last = 0;
 	const char *longest = NULL;
 
-	for (; i < MAXSKINS; i++)
+	for (; i < numskins; i++)
 	{
 		const char *str = NULL;
 
-		if (!skins[i].name[0] || !R_SkinUsable(-1, i))
+		if (!skins[i]->name[0] || !R_SkinUsable(-1, i))
 			continue;
 
-		str = skins[i].realname;
+		str = skins[i]->realname;
 		len = strlen(str);
 
 		if (len > last)
@@ -7078,9 +7078,9 @@ static void M_PatchSkinNameTable(void)
 
 	for (j = 0; j < MAXSKINS; j++)
 	{
-		if (skins[j].name[0] != '\0' && R_SkinUsable(-1, j))
+		if (j < numskins && skins[j]->name[0] != '\0' && R_SkinUsable(-1, j))
 		{
-			skins_cons_t[j].strvalue = skins[j].realname;
+			skins_cons_t[j].strvalue = skins[j]->realname;
 			skins_cons_t[j].value = j+1;
 		}
 		else
@@ -11460,7 +11460,7 @@ static void M_DrawLoadGameData(void)
 		savetodraw--;
 
 		if (savegameinfo[savetodraw].lives != 0)
-			charskin = &skins[savegameinfo[savetodraw].skinnum];
+			charskin = skins[savegameinfo[savetodraw].skinnum];
 
 		// signpost background
 		{
@@ -11594,8 +11594,8 @@ static void M_DrawLoadGameData(void)
 			// botskin first
 			if (savegameinfo[savetodraw].botskin)
 			{
-				skin_t *charbotskin = &skins[savegameinfo[savetodraw].botskin-1];
-				sprdef = &charbotskin->sprites[SPR2_SIGN];
+				skin_t *charbotskin = skins[savegameinfo[savetodraw].botskin-1];
+				sprdef = P_GetSkinSpritedef(charbotskin, SPR2_SIGN);
 				if (!sprdef->numframes)
 					goto skipbot;
 				colormap = R_GetTranslationColormap(savegameinfo[savetodraw].botskin-1, charbotskin->prefcolor, GTC_CACHE);
@@ -11615,7 +11615,7 @@ skipbot:
 			// signpost image
 			if (!charskin) // shut up compiler
 				goto skipsign;
-			sprdef = &charskin->sprites[SPR2_SIGN];
+			sprdef = P_GetSkinSpritedef(charskin, SPR2_SIGN);
 			colormap = R_GetTranslationColormap(savegameinfo[savetodraw].skinnum, charskin->prefcolor, GTC_CACHE);
 			if (!sprdef->numframes)
 				goto skipsign;
@@ -11644,7 +11644,7 @@ skipsign:
 				goto skiplife;
 
 			// lives
-			sprdef = &charskin->sprites[SPR2_LIFE];
+			sprdef = P_GetSkinSpritedef(charskin, SPR2_LIFE);
 			if (!sprdef->numframes)
 				goto skiplife;
 			sprframe = &sprdef->spriteframes[0];
@@ -12430,7 +12430,7 @@ static void M_CharacterSelectTicker(void)
 	boolean changed = true;
 #endif
 
-	skin_t *charskin = &skins[description[char_on].skinnum[0]];
+	skin_t *charskin = skins[description[char_on].skinnum[0]];
 
 #ifdef TOUCHINPUTS
 	if (charsel_changing && abs(fx->slide[1]) < FRACUNIT)
@@ -12627,9 +12627,9 @@ static void M_CacheCharacterSelectEntry(INT32 i, INT32 skinnum)
 {
 	if (!(description[i].picname[0]))
 	{
-		if (skins[skinnum].sprites[SPR2_XTRA].numframes > XTRA_CHARSEL)
+		if (P_GetSkinSpritedef(skins[skinnum], SPR2_XTRA)->numframes > XTRA_CHARSEL)
 		{
-			spritedef_t *sprdef = &skins[skinnum].sprites[SPR2_XTRA];
+			spritedef_t *sprdef = P_GetSkinSpritedef(skins[skinnum], SPR2_XTRA);
 			spriteframe_t *sprframe = &sprdef->spriteframes[XTRA_CHARSEL];
 			description[i].charpic = W_CachePatchNum(sprframe->lumppat[0], PU_PATCH);
 		}
@@ -12848,7 +12848,7 @@ static void M_DrawSetupChoosePlayerMenu(void)
 
 	// Find skin number from description[]
 	skinnum = description[char_on].skinnum[0];
-	charskin = &skins[skinnum];
+	charskin = skins[skinnum];
 
 	// Make the translation colormap
 	UINT8 *colormap = R_GetTranslationColormap(TC_DEFAULT, charsel_color, GTC_CACHE);
@@ -12953,7 +12953,7 @@ static void M_DrawSetupChoosePlayerMenu(void)
 				prevoutlinecolor = description[prev].tagoutlinecolor;
 				if (prevtext[0] == '\0')
 					prevpatch = description[prev].namepic;
-				charskin = &skins[description[prev].skinnum[0]];
+				charskin = skins[description[prev].skinnum[0]];
 				if (!prevtextcolor)
 					prevtextcolor = charskin->prefcolor;
 				if (!prevoutlinecolor)
@@ -12983,7 +12983,7 @@ static void M_DrawSetupChoosePlayerMenu(void)
 				nextoutlinecolor = description[next].tagoutlinecolor;
 				if (nexttext[0] == '\0')
 					nextpatch = description[next].namepic;
-				charskin = &skins[description[next].skinnum[0]];
+				charskin = skins[description[next].skinnum[0]];
 				if (!nexttextcolor)
 					nexttextcolor = charskin->prefcolor;
 				if (!nextoutlinecolor)
@@ -13051,7 +13051,7 @@ static void M_ChoosePlayer(INT32 choice)
 		if ((botingame = (description[choice].skinnum[1] != -1))) {
 			// this character has a second skin
 			botskin = (UINT8)(description[choice].skinnum[1]+1);
-			botcolor = skins[description[choice].skinnum[1]].prefcolor;
+			botcolor = skins[description[choice].skinnum[1]]->prefcolor;
 		}
 		else
 			botskin = botcolor = 0;
@@ -13505,9 +13505,9 @@ void M_DrawTimeAttackMenu(void)
 
 	// Character face!
 	{
-		if (skins[cv_chooseskin.value-1].sprites[SPR2_XTRA].numframes > XTRA_CHARSEL)
+		if (P_GetSkinSpritedef(skins[cv_chooseskin.value-1], SPR2_XTRA)->numframes > XTRA_CHARSEL)
 		{
-			spritedef_t *sprdef = &skins[cv_chooseskin.value-1].sprites[SPR2_XTRA];
+			spritedef_t *sprdef = P_GetSkinSpritedef(skins[cv_chooseskin.value-1], SPR2_XTRA);
 			spriteframe_t *sprframe = &sprdef->spriteframes[XTRA_CHARSEL];
 			PictureOfUrFace = W_CachePatchNum(sprframe->lumppat[0], PU_PATCH);
 		}
@@ -13974,7 +13974,7 @@ static void M_StartModeAttack(UINT8 mode)
 		I_Error("Out of memory for replay filepath\n");
 
 	sprintf(gpath,"replay"PATHSEP"%s"PATHSEP"%s", timeattackfolder, G_BuildMapName(cv_nextmap.value));
-	snprintf(nameofdemo, sizeof nameofdemo, "%s-%s-last", gpath, skins[cv_chooseskin.value-1].name);
+	snprintf(nameofdemo, sizeof nameofdemo, "%s-%s-last", gpath, skins[cv_chooseskin.value-1]->name);
 
 	if (!cv_autorecord.value)
 		remove(va("%s"PATHSEP"%s.lmp", srb2home, nameofdemo));
@@ -14041,7 +14041,7 @@ static void M_ReplayTimeAttack(INT32 choice)
 		if (choice != 4)
 		{
 			// srb2/replay/main/map01-sonic-time-best.lmp
-			snprintf(ra_demoname, 1024, "%s"PATHSEP"replay"PATHSEP"%s"PATHSEP"%s-%s-%s.lmp", srb2home, timeattackfolder, G_BuildMapName(cv_nextmap.value), skins[cv_chooseskin.value-1].name, which);
+			snprintf(ra_demoname, 1024, "%s"PATHSEP"replay"PATHSEP"%s"PATHSEP"%s-%s-%s.lmp", srb2home, timeattackfolder, G_BuildMapName(cv_nextmap.value), skins[cv_chooseskin.value-1]->name, which);
 		}
 	}
 	else if (currentMenu == &SP_NightsReplayDef)
@@ -14064,7 +14064,7 @@ static void M_ReplayTimeAttack(INT32 choice)
 
 		if (choice != 3)
 		{
-			snprintf(ra_demoname, 1024, "%s"PATHSEP"replay"PATHSEP"%s"PATHSEP"%s-%s-%s.lmp", srb2home, timeattackfolder, G_BuildMapName(cv_nextmap.value), skins[cv_chooseskin.value-1].name, which);
+			snprintf(ra_demoname, 1024, "%s"PATHSEP"replay"PATHSEP"%s"PATHSEP"%s-%s-%s.lmp", srb2home, timeattackfolder, G_BuildMapName(cv_nextmap.value), skins[cv_chooseskin.value-1]->name, which);
 
 #ifdef OLDNREPLAYNAME // Check for old style named NiGHTS replay if a new style replay doesn't exist.
 			if (!FIL_FileExists(ra_demoname))
@@ -14151,7 +14151,7 @@ static void M_OverwriteGuest(const char *which)
 	char *rguest = Z_StrDup(va("%s"PATHSEP"replay"PATHSEP"%s"PATHSEP"%s-guest.lmp", srb2home, timeattackfolder, G_BuildMapName(cv_nextmap.value)));
 	UINT8 *buf;
 	size_t len;
-	len = FIL_ReadFile(va("%s"PATHSEP"replay"PATHSEP"%s"PATHSEP"%s-%s-%s.lmp", srb2home, timeattackfolder, G_BuildMapName(cv_nextmap.value), skins[cv_chooseskin.value-1].name, which), &buf);
+	len = FIL_ReadFile(va("%s"PATHSEP"replay"PATHSEP"%s"PATHSEP"%s-%s-%s.lmp", srb2home, timeattackfolder, G_BuildMapName(cv_nextmap.value), skins[cv_chooseskin.value-1]->name, which), &buf);
 
 	if (!len) {
 		return;
@@ -14794,7 +14794,7 @@ static void M_Refresh(INT32 choice)
 
 	// note: this is the one case where 0 is a valid room number
 	// because it corresponds to "All"
-	CL_UpdateServerList(!(ms_RoomId < 0), ms_RoomId);
+	CL_UpdateServerList(cv_masterserver_room_id.value >= 0, cv_masterserver_room_id.value);
 
 	// first page of servers
 	serverlistpage = 0;
@@ -14879,7 +14879,7 @@ static void M_DrawConnectMenu(void)
 		numPages = 1;
 
 	// Room name
-	if (ms_RoomId < 0)
+	if (cv_masterserver_room_id.value < 0)
 		V_DrawRightAlignedString(BASEVIDWIDTH - currentMenu->x, currentMenu->y + MP_ConnectMenu[mp_connect_room].alphaKey,
 		                         V_YELLOWMAP, (itemOn == mp_connect_room) ? "<Select to change>" : "<Unlisted Mode>");
 	else
@@ -14909,6 +14909,8 @@ static void M_DrawConnectMenu(void)
 			V_DrawSmallString(currentMenu->x+202, S_LINEY(i)+8, globalflags, "\x85" "Mod");
 		if (serverlist[slindex].info.cheatsenabled)
 			V_DrawSmallString(currentMenu->x+222, S_LINEY(i)+8, globalflags, "\x83" "Cheats");
+		if (Net_IsNodeIPv6(serverlist[slindex].node))
+			V_DrawSmallString(currentMenu->x+252, S_LINEY(i)+8, globalflags, "\x84" "IPv6");
 
 		V_DrawSmallString(currentMenu->x, S_LINEY(i)+8, globalflags,
 		                     va("Ping: %u", (UINT32)LONG(serverlist[slindex].info.time)));
@@ -15184,7 +15186,7 @@ static void M_ConnectMenu(INT32 choice)
 
 	// first page of servers
 	serverlistpage = 0;
-	if (ms_RoomId < 0)
+	if (cv_masterserver_room_id.value < 0)
 	{
 		M_RoomMenu(0); // Select a room instead of staring at an empty list
 		// This prevents us from returning to the modified game alert.
@@ -15280,10 +15282,10 @@ static void M_ChooseRoom(INT32 choice)
 #endif
 
 	if (choice == 0)
-		ms_RoomId = -1;
+		CV_SetValue(&cv_masterserver_room_id, -1);
 	else
 	{
-		ms_RoomId = roomIds[choice-1];
+		CV_SetValue(&cv_masterserver_room_id, roomIds[choice-1]);
 		menuRoomIndex = choice - 1;
 	}
 
@@ -15359,7 +15361,7 @@ static void M_DrawServerMenu(void)
 	if (currentMenu == &MP_ServerDef)
 	{
 		M_DrawLevelPlatterHeader(currentMenu->y - lsheadingheight/2, "Server settings", true, false);
-		if (ms_RoomId < 0)
+		if (cv_masterserver_room_id.value < 0)
 			V_DrawRightAlignedString(BASEVIDWIDTH - currentMenu->x, currentMenu->y + MP_ServerMenu[mp_server_room].alphaKey,
 			                         V_YELLOWMAP, (itemOn == mp_server_room) ? "<Select to change>" : "<Unlisted Mode>");
 		else
@@ -15467,7 +15469,7 @@ static void M_ServerOptions(INT32 choice)
 static void M_StartServerMenu(INT32 choice)
 {
 	(void)choice;
-	ms_RoomId = -1;
+	CV_SetValue(&cv_masterserver_room_id, -1);
 	levellistmode = LLM_CREATESERVER;
 	Newgametype_OnChange();
 	M_SetupNextMenu(&MP_ServerDef);
@@ -15776,6 +15778,23 @@ static UINT8      multi_frame;
 static UINT8      multi_spr2;
 static boolean    multi_paused;
 static boolean    multi_invcolor;
+static boolean    multi_override;
+
+static huddrawlist_h luahuddrawlist_playersetup;
+
+static void M_InitPlayerSetupLua(void)
+{
+	// I'd really like to assume that the drawlist has been destroyed,
+	// but it appears M_ClearMenus has options not to call exit routines...
+	// so that doesn't seem safe to me??
+	if (!LUA_HUD_IsDrawListValid(luahuddrawlist_playersetup))
+	{
+		LUA_HUD_DestroyDrawList(luahuddrawlist_playersetup);
+		luahuddrawlist_playersetup = LUA_HUD_CreateDrawList();
+	}
+	LUA_HUD_ClearDrawList(luahuddrawlist_playersetup);
+	multi_override = false;
+}
 
 // this is set before entering the MultiPlayer setup menu,
 // for either player 1 or 2
@@ -15927,6 +15946,7 @@ static void M_DrawSetupMultiPlayerMenu(void)
 	spriteframe_t *sprframe;
 	patch_t *patch;
 	UINT8 *colormap;
+	fixed_t scale;
 
 	x = MP_PlayerSetupDef.x;
 	y = MP_PlayerSetupDef.y;
@@ -15958,11 +15978,11 @@ static void M_DrawSetupMultiPlayerMenu(void)
 	// draw skin string
 	V_DrawRightAlignedString(BASEVIDWIDTH - x, y,
 	             ((MP_PlayerSetupMenu[1].status & IT_TYPE) == IT_SPACE ? V_TRANSLUCENT : 0)|(itemOn == 1 ? V_YELLOWMAP : 0)|V_ALLOWLOWERCASE,
-	             skins[setupm_fakeskin].realname);
+	             skins[setupm_fakeskin]->realname);
 
 	if (itemOn == 1 && (MP_PlayerSetupMenu[1].status & IT_TYPE) != IT_SPACE)
 	{
-		const char *str = M_TouchInput() ? M_LongestCharacterName() : skins[setupm_fakeskin].realname;
+		const char *str = M_TouchInput() ? M_LongestCharacterName() : skins[setupm_fakeskin]->realname;
 		V_DrawCharacter(BASEVIDWIDTH - x - 10 - V_StringWidth(str, V_ALLOWLOWERCASE) - (skullAnimCounter/5), y,
 			'\x1C' | V_YELLOWMAP, false);
 		V_DrawCharacter(BASEVIDWIDTH - x + 2 + (skullAnimCounter/5), y,
@@ -16009,28 +16029,47 @@ static void M_DrawSetupMultiPlayerMenu(void)
 	}
 #endif
 
-	sprdef = &skins[setupm_fakeskin].sprites[multi_spr2];
+	sprdef = P_GetSkinSpritedef(skins[setupm_fakeskin], multi_spr2);
 
 	if (!setupm_fakecolor->color || !sprdef->numframes) // should never happen but hey, who knows
 		goto faildraw;
 
 	// ok, draw player sprite for sure now
-	colormap = R_GetTranslationColormap(setupm_fakeskin, setupm_fakecolor->color, GTC_CACHE);
-
 	if (multi_frame >= sprdef->numframes)
 		multi_frame = 0;
+
+	scale = FixedDiv(skins[setupm_fakeskin]->highresscale, skins[setupm_fakeskin]->shieldscale);
+
+#define chary (y+64)
+
+	if (renderisnewtic)
+	{
+		LUA_HUD_ClearDrawList(luahuddrawlist_playersetup);
+		multi_override = LUA_HookCharacterHUD
+		(
+			HUD_HOOK(playersetup), luahuddrawlist_playersetup, setupm_player,
+			x << FRACBITS, chary << FRACBITS, scale,
+			setupm_fakeskin, (UINT8)multi_spr2, multi_frame, 1, setupm_fakecolor->color,
+			(multi_tics >> FRACBITS) + 1, multi_paused
+		);
+	}
+
+	LUA_HUD_DrawList(luahuddrawlist_playersetup);
+
+	if (multi_override == true)
+		goto colordraw;
+
+	colormap = R_GetTranslationColormap(setupm_fakeskin, setupm_fakecolor->color, GTC_CACHE);
 
 	sprframe = &sprdef->spriteframes[multi_frame];
 	patch = W_CachePatchNum(sprframe->lumppat[0], PU_PATCH);
 	if (sprframe->flip & 1) // Only for first sprite
 		flags |= V_FLIP; // This sprite is left/right flipped!
 
-#define chary (y+64)
-
 	V_DrawFixedPatch(
 		x<<FRACBITS,
 		chary<<FRACBITS,
-		FixedDiv(skins[setupm_fakeskin].highresscale, skins[setupm_fakeskin].shieldscale),
+		scale,
 		flags, patch, colormap);
 
 	goto colordraw;
@@ -16235,7 +16274,7 @@ static void M_HandleSetupMultiPlayerSkin(INT32 choice)
 					setupm_fakeskin = numskins-1;
 			}
 			while ((prev_setupm_fakeskin != setupm_fakeskin) && !(R_SkinUsable(-1, setupm_fakeskin)));
-			multi_spr2 = P_GetSkinSprite2(&skins[setupm_fakeskin], SPR2_WALK, NULL);
+			multi_spr2 = P_GetSkinSprite2(skins[setupm_fakeskin], SPR2_WALK, NULL);
 			break;
 
 		case KEY_RIGHTARROW:
@@ -16248,7 +16287,7 @@ static void M_HandleSetupMultiPlayerSkin(INT32 choice)
 					setupm_fakeskin = 0;
 			}
 			while ((prev_setupm_fakeskin != setupm_fakeskin) && !(R_SkinUsable(-1, setupm_fakeskin)));
-			multi_spr2 = P_GetSkinSprite2(&skins[setupm_fakeskin], SPR2_WALK, NULL);
+			multi_spr2 = P_GetSkinSprite2(skins[setupm_fakeskin], SPR2_WALK, NULL);
 			break;
 
 		default:
@@ -16343,7 +16382,7 @@ static void M_HandleSetupMultiPlayer(INT32 choice)
 			{
 				S_StartSound(NULL,sfx_strpst);
 				// you know what? always putting these in the buffer won't hurt anything.
-				COM_BufAddText (va("%s \"%s\"\n",setupm_cvdefaultskin->name,skins[setupm_fakeskin].name));
+				COM_BufAddText (va("%s \"%s\"\n",setupm_cvdefaultskin->name,skins[setupm_fakeskin]->name));
 				COM_BufAddText (va("%s %d\n",setupm_cvdefaultcolor->name,setupm_fakecolor->color));
 				break;
 			}
@@ -16421,7 +16460,7 @@ static void M_HandleSetupMultiPlayer(INT32 choice)
 			}
 			else if (itemOn == 2)
 			{
-				UINT16 col = skins[setupm_fakeskin].prefcolor;
+				UINT16 col = skins[setupm_fakeskin]->prefcolor;
 				if ((setupm_fakecolor->color != col) && skincolors[col].accessible)
 				{
 					S_StartSound(NULL,sfx_menu1); // Tails
@@ -16808,7 +16847,9 @@ static void M_SetupMultiPlayer(INT32 choice)
 	else
 		MP_PlayerSetupMenu[2].status = (IT_KEYHANDLER|IT_STRING);
 
-	multi_spr2 = P_GetSkinSprite2(&skins[setupm_fakeskin], SPR2_WALK, NULL);
+	multi_spr2 = P_GetSkinSprite2(skins[setupm_fakeskin], SPR2_WALK, NULL);
+
+	M_InitPlayerSetupLua();
 
 	MP_PlayerSetupDef.prevMenu = currentMenu;
 	M_SetupNextMenu(&MP_PlayerSetupDef);
@@ -16860,7 +16901,9 @@ static void M_SetupMultiPlayer2(INT32 choice)
 	else
 		MP_PlayerSetupMenu[2].status = (IT_KEYHANDLER|IT_STRING);
 
-	multi_spr2 = P_GetSkinSprite2(&skins[setupm_fakeskin], SPR2_WALK, NULL);
+	multi_spr2 = P_GetSkinSprite2(skins[setupm_fakeskin], SPR2_WALK, NULL);
+
+	M_InitPlayerSetupLua();
 
 	MP_PlayerSetupDef.prevMenu = currentMenu;
 	M_SetupNextMenu(&MP_PlayerSetupDef);
@@ -16878,10 +16921,16 @@ static boolean M_QuitMultiPlayerMenu(void)
 			setupm_name[l] =0;
 		COM_BufAddText (va("%s \"%s\"\n",setupm_cvname->name,setupm_name));
 	}
-	COM_BufAddText (va("%s \"%s\"\n",setupm_cvskin->name,skins[setupm_fakeskin].name));
+	COM_BufAddText (va("%s \"%s\"\n",setupm_cvskin->name,skins[setupm_fakeskin]->name));
 	// send color if changed
 	if (setupm_fakecolor->color != setupm_cvcolor->value)
 		COM_BufAddText (va("%s %d\n",setupm_cvcolor->name,setupm_fakecolor->color));
+
+	// de-allocate Lua player setup drawlist
+	LUA_HUD_DestroyDrawList(luahuddrawlist_playersetup);
+	luahuddrawlist_playersetup = NULL;
+	multi_override = false;
+
 	return true;
 }
 

@@ -59,6 +59,7 @@ static lua_CFunction liblist[] = {
 	LUA_BlockmapLib, // blockmap stuff
 	LUA_HudLib, // HUD stuff
 	LUA_InputLib, // inputs
+	LUA_ColorLib, // general color functions
 	NULL
 };
 
@@ -888,6 +889,8 @@ void LUA_InvalidateLevel(void)
 		LUA_InvalidateUserdata(&sectors[i]);
 		LUA_InvalidateUserdata(&sectors[i].lines);
 		LUA_InvalidateUserdata(&sectors[i].tags);
+		if (sectors[i].extra_colormap)
+			LUA_InvalidateUserdata(sectors[i].extra_colormap);
 		if (sectors[i].ffloors)
 		{
 			for (rover = sectors[i].ffloors; rover; rover = rover->next)
@@ -1342,7 +1345,7 @@ static UINT8 ArchiveValue(int TABLESINDEX, int myindex)
 		{
 			skin_t *skin = *((skin_t **)lua_touserdata(gL, myindex));
 			WRITEUINT8(save_p, ARCH_SKIN);
-			WRITEUINT8(save_p, skin - skins); // UINT8 because MAXSKINS is only 32
+			WRITEUINT8(save_p, skin->skinnum); // UINT8 because MAXSKINS is only 32
 			break;
 		}
 		default:
@@ -1592,7 +1595,7 @@ static UINT8 UnArchiveValue(int TABLESINDEX)
 		LUA_PushUserdata(gL, READUINT16(save_p) == 1 ? &mouse : &mouse2, META_MOUSE);
 		break;
 	case ARCH_SKIN:
-		LUA_PushUserdata(gL, &skins[READUINT8(save_p)], META_SKIN);
+		LUA_PushUserdata(gL, skins[READUINT8(save_p)], META_SKIN);
 		break;
 	case ARCH_TEND:
 		return 1;
@@ -1794,6 +1797,96 @@ int Lua_CreateFieldTable(lua_State *L, const char *const lst[])
 	}
 
 	return luaL_ref(L, LUA_REGISTRYINDEX);
+}
+
+static void SetBasicMetamethods(
+	lua_State *L,
+	lua_CFunction get,
+	lua_CFunction set,
+	lua_CFunction len
+)
+{
+	if (get)
+		LUA_SetCFunctionField(L, "__index", get);
+	if (set)
+		LUA_SetCFunctionField(L, "__newindex", set);
+	if (len)
+		LUA_SetCFunctionField(L, "__len", len);
+}
+
+void LUA_SetCFunctionField(lua_State *L, const char *name, lua_CFunction value)
+{
+	lua_pushcfunction(L, value);
+	lua_setfield(L, -2, name);
+}
+
+void LUA_RegisterUserdataMetatable(
+	lua_State *L,
+	const char *name,
+	lua_CFunction get,
+	lua_CFunction set,
+	lua_CFunction len
+)
+{
+	luaL_newmetatable(L, name);
+	SetBasicMetamethods(L, get, set, len);
+	lua_pop(L, 1);
+}
+
+// If keep is true, leaves the metatable on the stack.
+// Otherwise, the stack size remains unchanged.
+void LUA_CreateAndSetMetatable(
+	lua_State *L,
+	lua_CFunction get,
+	lua_CFunction set,
+	lua_CFunction len,
+	boolean keep
+)
+{
+	lua_newtable(L);
+	SetBasicMetamethods(L, get, set, len);
+
+	lua_pushvalue(L, -1);
+	lua_setmetatable(L, -3);
+
+	if (!keep)
+		lua_pop(L, 1);
+}
+
+// If keep is true, leaves the userdata and metatable on the stack.
+// Otherwise, the stack size remains unchanged.
+void LUA_CreateAndSetUserdataField(
+	lua_State *L,
+	int index,
+	const char *name,
+	lua_CFunction get,
+	lua_CFunction set,
+	lua_CFunction len,
+	boolean keep
+)
+{
+	if (index < 0 && index > LUA_REGISTRYINDEX)
+		index -= 3;
+
+	lua_newuserdata(L, 0);
+	LUA_CreateAndSetMetatable(L, get, set, len, true);
+
+	lua_pushvalue(L, -2);
+	lua_setfield(L, index, name);
+
+	if (!keep)
+		lua_pop(L, 2);
+}
+
+void LUA_RegisterGlobalUserdata(
+	lua_State *L,
+	const char *name,
+	lua_CFunction get,
+	lua_CFunction set,
+	lua_CFunction len
+)
+{
+	LUA_CreateAndSetUserdataField(L, LUA_GLOBALSINDEX, name, get, set, len, false);
 }
 
 void LUA_PushTaggableObjectArray
