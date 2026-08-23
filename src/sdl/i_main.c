@@ -40,7 +40,7 @@
 #endif
 
 #if defined (_WIN32) && !defined (main)
-//#define SDLMAIN
+#define SDLMAIN
 #endif
 
 #ifdef SDLMAIN
@@ -92,6 +92,9 @@ int main(int argc, char **argv)
 	I_StartupTTF(FONTPOINTSIZE, SDL_INIT_VIDEO, SDL_SWSURFACE);
 #endif
 #endif
+
+	// disable text input right off the bat, since we don't need it at the start.
+	I_SetTextInputMode(false);
 
 #ifdef LOGMESSAGES
 	if (!M_CheckParm("-nolog"))

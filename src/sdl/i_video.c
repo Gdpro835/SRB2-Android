@@ -117,6 +117,8 @@
 
 #ifdef PNG_READ_SUPPORTED
 #define SPLASH_SCREEN_SUPPORTED
+// maximum number of windowed modes (see windowedModes[][])
+#define MAXWINMODES (21)
 
 #if defined(__ANDROID__)
 #include "SDL_rwops.h"
@@ -129,8 +131,6 @@
 
 rendermode_t rendermode = render_soft;
 rendermode_t chosenrendermode = render_none; // set by command line arguments
-
-boolean highcolor = false;
 
 static void VidWaitChanged(void);
 
@@ -225,7 +225,9 @@ static INT32 windowedModes[MAXWINMODES][2] =
 	{1920,1080}, // 1.66
 	{1680,1050}, // 1.60,5.25
 	{1600,1200}, // 1.33
+	{1600,1000}, // 1.60,5.00
 	{1600, 900}, // 1.66
+	{1536, 864}, // 1.66,4.80
 	{1366, 768}, // 1.66
 	{1440, 900}, // 1.60,4.50
 	{1280,1024}, // 1.33?
@@ -234,6 +236,7 @@ static INT32 windowedModes[MAXWINMODES][2] =
 	{1280, 720}, // 1.66
 	{1152, 864}, // 1.33,3.60
 	{1024, 768}, // 1.33,3.20
+	{ 960, 600}, // 1.60,3.00
 	{ 800, 600}, // 1.33,2.50
 	{ 640, 480}, // 1.33,2.00
 	{ 640, 400}, // 1.60,2.00
@@ -643,7 +646,7 @@ static INT32 Impl_SDL_Scancode_To_Keycode(SDL_Scancode code)
 	return 0;
 }
 
-static boolean IgnoreMouse(void)
+static boolean ShouldIgnoreMouse(void)
 {
 	if (cv_alwaysgrabmouse.value)
 		return false;
@@ -654,9 +657,18 @@ static boolean IgnoreMouse(void)
 	if (gamestate != GS_LEVEL && gamestate != GS_INTERMISSION &&
 			gamestate != GS_CONTINUING && gamestate != GS_CUTSCENE)
 		return true;
-	if (!mousegrabbedbylua)
-		return true;
 	return false;
+}
+
+static boolean ShouldGrabMouse(void)
+{
+	if (cv_alwaysgrabmouse.value)
+		return true;
+	if (ShouldIgnoreMouse())
+		return false;
+	if (!mousegrabbedbylua)
+		return false;
+	return true;
 }
 
 static void SDLdoGrabMouse(void)
@@ -685,7 +697,7 @@ void I_UpdateMouseGrab(void)
 {
 	if (SDL_WasInit(SDL_INIT_VIDEO) == SDL_INIT_VIDEO && window != NULL
 	&& SDL_GetMouseFocus() == window && SDL_GetKeyboardFocus() == window
-	&& USE_MOUSEINPUT && !IgnoreMouse())
+	&& USE_MOUSEINPUT && ShouldGrabMouse())
 		SDLdoGrabMouse();
 }
 
@@ -860,7 +872,7 @@ static void Impl_HandleWindowEvent(SDL_WindowEvent evt)
 		if (!firsttimeonmouse && cv_usemouse.value)
 			I_StartupMouse();
 
-		if (USE_MOUSEINPUT && !IgnoreMouse())
+		if (USE_MOUSEINPUT && ShouldGrabMouse())
 			SDLdoGrabMouse();
 	}
 	else if (!mousefocus && !kbfocus)
@@ -898,13 +910,26 @@ static void Impl_HandleKeyboardEvent(SDL_KeyboardEvent evt, Uint32 type)
 	if (event.key) D_PostEvent(&event);
 }
 
+static void Impl_HandleTextEvent(SDL_TextInputEvent evt)
+{
+	event_t event;
+	event.type = ev_text;
+	if (evt.text[1] != '\0')
+	{
+		// limit ourselves to ASCII for now, we can add UTF-8 support later
+		return;
+	}
+	event.key = evt.text[0];
+	D_PostEvent(&event);
+}
+
 static void Impl_HandleMouseMotionEvent(SDL_MouseMotionEvent evt)
 {
 	static boolean firstmove = true;
 
 	if (USE_MOUSEINPUT)
 	{
-		if ((SDL_GetMouseFocus() != window && SDL_GetKeyboardFocus() != window) || (IgnoreMouse() && !firstmove))
+		if ((SDL_GetMouseFocus() != window && SDL_GetKeyboardFocus() != window) || (!ShouldGrabMouse() && !firstmove))
 		{
 			SDLdoUngrabMouse();
 			firstmove = false;
@@ -957,7 +982,7 @@ static void Impl_HandleMouseButtonEvent(SDL_MouseButtonEvent evt, Uint32 type)
 	// this apparently makes a mouse button down event but not a mouse button up event,
 	// resulting in whatever key was pressed down getting "stuck" if we don't ignore it.
 	// -- Monster Iestyn (28/05/18)
-	if (SDL_GetMouseFocus() != window || IgnoreMouse())
+	if (SDL_GetMouseFocus() != window || ShouldIgnoreMouse())
 		return;
 
 	/// \todo inputEvent.button.which
@@ -1425,6 +1450,9 @@ void I_GetEvent(void)
 			case SDL_KEYDOWN:
 				Impl_HandleKeyboardEvent(evt.key, evt.type);
 				break;
+			case SDL_TEXTINPUT:
+				Impl_HandleTextEvent(evt.text);
+				break;
 			case SDL_MOUSEMOTION:
 				//if (!mouseMotionOnce)
 				Impl_HandleMouseMotionEvent(evt.motion);
@@ -1666,7 +1694,7 @@ void I_StartupMouse(void)
 	}
 	else
 		firsttimeonmouse = SDL_FALSE;
-	if (cv_usemouse.value && !IgnoreMouse())
+	if (cv_usemouse.value && ShouldGrabMouse())
 		SDLdoGrabMouse();
 	else
 		SDLdoUngrabMouse();

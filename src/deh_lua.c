@@ -11,6 +11,7 @@
 /// \brief Lua SOC library
 
 #include "deh_lua.h"
+#include "r_things.h"
 
 // freeslot takes a name (string only!)
 // and allocates it to the appropriate free slot.

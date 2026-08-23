@@ -936,10 +936,18 @@ next_token:
 
 		if (mainfile == false)
 			CONS_Printf(M_GetText("Added skin '%s'\n"), skin->name);
+#ifdef SKINVALUES
+		skin_cons_t[numskins].value = numskins;
+		skin_cons_t[numskins].strvalue = skin->name;
+#endif
 
 		numskins++;
 	}
-	return;
+
+#ifdef HWRENDER
+	if (rendermode == render_opengl)
+		HWR_ReadModels();
+#endif
 }
 
 //

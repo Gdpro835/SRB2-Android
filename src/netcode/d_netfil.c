@@ -187,6 +187,12 @@ UINT8 *PutFileNeeded(UINT16 firstfile)
 
 		nameonly(strcpy(wadfilename, wadfiles[i]->filename));
 
+#ifdef USE_ANDROID_PK3
+		// Don't put android.pk3 in the list
+		if (!strcmp(wadfilename, ANDROID_PK3_FILENAME))
+			continue;
+#endif
+
 		// Look below at the WRITE macros to understand what these numbers mean.
 		if (p + 1 + 4 + min(strlen(wadfilename) + 1, MAX_WADPATH) + 16 > p_start + MAXFILENEEDED)
 		{
@@ -478,7 +484,15 @@ INT32 CL_CheckFiles(void)
 		CONS_Debug(DBG_NETPLAY, "game is modified; only doing basic checks\n");
 		for (i = 0, j = mainwads; i < fileneedednum || j < numwadfiles;)
 		{
-			if (j < numwadfiles && !wadfiles[j]->important)
+			boolean important = (wadfiles[j]->important);
+
+#ifdef USE_ANDROID_PK3
+			nameonly(strcpy(wadfilename, wadfiles[j]->filename));
+			if (!strcmp(wadfilename, ANDROID_PK3_FILENAME))
+				important = false;
+#endif
+
+			if (j < numwadfiles && !important)
 			{
 				// Unimportant on our side.
 				++j;
@@ -522,6 +536,17 @@ INT32 CL_CheckFiles(void)
 		}
 		else
 		{
+		nameonly(strcpy(wadfilename, fileneeded[i].filename));
+
+#ifdef USE_ANDROID_PK3
+		if (!strcmp(wadfilename, ANDROID_PK3_FILENAME))
+		{
+			CONS_Debug(DBG_NETPLAY, "Android resource, already loaded\n");
+			fileneeded[i].status = FS_OPEN;
+			continue;
+		}
+#endif
+		{
 			// Check in already loaded files
 			for (j = mainwads; j < numwadfiles; j++)
 			{
@@ -536,6 +561,7 @@ INT32 CL_CheckFiles(void)
 			}
 
 			fileneeded[i].status = findfile(fileneeded[i].filename, fileneeded[i].md5sum, true);
+		}
 		}
 
 		CONS_Debug(DBG_NETPLAY, "found %d\n", fileneeded[i].status);
@@ -1348,6 +1374,9 @@ void PT_FileFragment(SINT8 node, INT32 netconsole)
 		&& strcmp(filename, "characters.pk3")
 		&& strcmp(filename, "patch.pk3")
 		&& strcmp(filename, "music.pk3")
+#ifdef USE_ANDROID_PK3
+		&& strcmp(filename, ANDROID_PK3_FILENAME)
+#endif
 		))
 		I_Error("Tried to download \"%s\"", filename);
 

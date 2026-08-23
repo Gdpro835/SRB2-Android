@@ -41,6 +41,10 @@
 #include "../z_zone.h"
 #include "../byteptr.h"
 
+#if defined(HAVE_MIXERX) && defined(__ANDROID__)
+#include "../d_main.h" // srb2home
+#endif
+
 #ifdef _MSC_VER
 #pragma warning(disable : 4214 4244)
 #endif
@@ -53,6 +57,12 @@
 #include "SDL_mixer_ext.h"
 #else
 #include "SDL_mixer.h"
+#endif
+
+#if defined(__ANDROID__)
+#define SetTimidityCfg Mix_SetTimidityCfg
+#else
+#define SetTimidityCfg Mix_Timidity_addToPathList // deprecated
 #endif
 
 /* This is the version number macro for the current SDL_mixer version: */
@@ -125,8 +135,21 @@ static int result;
 #endif
 
 #ifdef HAVE_MIXERX
+static const char *Midiplayer_GetSoundFontPath(void)
+{
+#if defined(__ANDROID__)
+	static char sfpath[256];
+	if (cv_midisoundfontpath.string)
+		snprintf(sfpath, sizeof(sfpath), "%s" PATHSEP "%s", srb2home, cv_midisoundfontpath.string);
+	return sfpath;
+#else
+	return cv_midisoundfontpath.string;
+#endif
+}
+
 static void Midiplayer_Onchange(void)
 {
+	const char *path;
 	boolean restart = false;
 
 	if (I_SongType() != MU_NONE && I_SongType() != MU_MID_EX && I_SongType() != MU_MID)
@@ -140,9 +163,11 @@ static void Midiplayer_Onchange(void)
 			restart = true;
 	}
 
-	if (!Mix_GetSoundFonts() || stricmp(Mix_GetSoundFonts(), cv_midisoundfontpath.string))
+	path = Midiplayer_GetSoundFontPath();
+
+	if (!Mix_GetSoundFonts() || stricmp(Mix_GetSoundFonts(), path))
 	{
-		if (!Mix_SetSoundFonts(cv_midisoundfontpath.string)) // == 0 means error
+		if (!Mix_SetSoundFonts(path)) // == 0 means error
 			CONS_Alert(CONS_ERROR, "Sound font error: %s", Mix_GetError());
 		else
 			restart = true;
@@ -159,13 +184,17 @@ static void Midiplayer_Onchange(void)
 
 static void MidiSoundfontPath_Onchange(void)
 {
+	const char *path;
+
 	if (Mix_GetMidiPlayer() != MIDI_Fluidsynth || (I_SongType() != MU_NONE && I_SongType() != MU_MID_EX))
 		return;
 
-	if (!Mix_GetSoundFonts() || stricmp(Mix_GetSoundFonts(), cv_midisoundfontpath.string))
+	path = Midiplayer_GetSoundFontPath();
+
+	if (!Mix_GetSoundFonts() || stricmp(Mix_GetSoundFonts(), path))
 	{
 		char *miditoken;
-		char *source = strdup(cv_midisoundfontpath.string);
+		char *source = strdup(path);
 		boolean proceed = true;
 		// check if file exists; menu calls this method at every keystroke
 
@@ -189,7 +218,7 @@ static void MidiSoundfontPath_Onchange(void)
 
 		if (proceed)
 		{
-			if (!Mix_SetSoundFonts(cv_midisoundfontpath.string))
+			if (!Mix_SetSoundFonts(path))
 				CONS_Alert(CONS_ERROR, "Sound font error: %s", Mix_GetError());
 			else
 				S_StartEx(true);
@@ -199,7 +228,16 @@ static void MidiSoundfontPath_Onchange(void)
 
 // make sure that s_sound.c does not already verify these
 // which happens when: defined(HAVE_MIXERX) && !defined(HAVE_MIXER)
-static CV_PossibleValue_t midiplayer_cons_t[] = {{MIDI_OPNMIDI, "OPNMIDI"}, {MIDI_Fluidsynth, "Fluidsynth"}, {MIDI_Timidity, "Timidity"}, {MIDI_Native, "Native"}, {0, NULL}};
+static CV_PossibleValue_t midiplayer_cons_t[] = {
+	{MIDI_OPNMIDI, "OPNMIDI"},
+	{MIDI_Fluidsynth, "Fluidsynth"},
+#if !defined(__ANDROID__)
+	{MIDI_Timidity, "Timidity"},
+	{MIDI_Native, "Native"},
+#endif
+	{0, NULL}
+};
+
 consvar_t cv_midiplayer = CVAR_INIT ("midiplayer", "OPNMIDI" /*MIDI_OPNMIDI*/, CV_CALL|CV_NOINIT|CV_SAVE, midiplayer_cons_t, Midiplayer_Onchange);
 consvar_t cv_midisoundfontpath = CVAR_INIT ("midisoundfont", "sf2/8bitsf.SF2", CV_CALL|CV_NOINIT|CV_SAVE, NULL, MidiSoundfontPath_Onchange);
 consvar_t cv_miditimiditypath = CVAR_INIT ("midisoundbank", "./timidity", CV_SAVE, NULL, NULL);
@@ -288,7 +326,7 @@ void I_StartupSound(void)
 
 #ifdef HAVE_MIXERX
 	Mix_SetMidiPlayer(cv_midiplayer.value);
-	Mix_SetSoundFonts(cv_midisoundfontpath.string);
+	Mix_SetSoundFonts(Midiplayer_GetSoundFontPath());
 #if SDL_MIXER_VERSION_ATLEAST(2,5,0)
 	Mix_SetTimidityCfg(cv_miditimiditypath.string);
 #else
@@ -1145,6 +1183,10 @@ boolean I_LoadSong(char *data, size_t len)
 	char *p = data;
 	SDL_RWops *rw;
 
+#ifdef HAVE_MIXERX
+	const char *sfpath;
+#endif
+
 	if (music
 #ifdef HAVE_GME
 		|| gme
@@ -1210,8 +1252,9 @@ boolean I_LoadSong(char *data, size_t len)
 #ifdef HAVE_MIXERX
 	if (Mix_GetMidiPlayer() != cv_midiplayer.value)
 		Mix_SetMidiPlayer(cv_midiplayer.value);
-	if (!Mix_GetSoundFonts() || stricmp(Mix_GetSoundFonts(), cv_midisoundfontpath.string))
-		Mix_SetSoundFonts(cv_midisoundfontpath.string);
+	sfpath = Midiplayer_GetSoundFontPath();
+	if (!Mix_GetSoundFonts() || stricmp(Mix_GetSoundFonts(), sfpath))
+		Mix_SetSoundFonts(sfpath);
 #if SDL_MIXER_VERSION_ATLEAST(2,5,0)
 	Mix_SetTimidityCfg(cv_miditimiditypath.string);
 #else

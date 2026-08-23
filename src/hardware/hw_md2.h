@@ -31,16 +31,19 @@ typedef struct
 	boolean     notexturefile; // true if texture file was not found
 	void        *blendgrpatch;
 	boolean     noblendfile; // true if blend texture file was not found
-	boolean     found;
+	boolean     notfound;
+	INT32       skin;
 	boolean     error;
 } md2_t;
 
 extern md2_t md2_models[NUMSPRITES];
-extern md2_t *md2_playermodels;
-extern size_t md2_numplayermodels;
+extern md2_t md2_playermodels[MAXSKINS];
 
 void HWR_InitModels(void);
-void HWR_LoadModels(void);
+void HWR_ReadModels(void);
+void HWR_FreeModelData(void);
+
+boolean HWR_ModelPackExists(const char *filename);
 
 boolean HWR_DrawModel(gl_vissprite_t *spr);
 

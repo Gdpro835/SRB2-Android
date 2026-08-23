@@ -1,7 +1,7 @@
 // SONIC ROBO BLAST 2
 //-----------------------------------------------------------------------------
 // Copyright (C) 1998-2000 by DooM Legacy Team.
-// Copyright (C) 1999-2023 by Sonic Team Junior.
+// Copyright (C) 1999-2024 by Sonic Team Junior.
 //
 // This program is free software distributed under the
 // terms of the GNU General Public License, version 2.
@@ -21,13 +21,15 @@
 #include "keys.h"
 #include "hu_stuff.h" // need HUFONT start & end
 #include "st_stuff.h"
-#include "d_net.h"
+#include "netcode/d_net.h"
 #include "d_player.h"
 #include "r_main.h"
 #include "z_zone.h"
 #include "console.h"
 #include "i_system.h"
 #include "lua_hook.h"
+#include "lua_script.h"
+#include "lua_libs.h"
 
 #ifdef TOUCHINPUTS
 #include "ts_main.h"
@@ -177,9 +179,12 @@ void G_MapEventsToControls(event_t *ev)
 		case ev_keydown:
 			if (ev->key < NUMINPUTS)
 			{
-				gamekeydown[ev->key] = 1;
-				if (G_KeyAssignedToControl(ev->key)) // Unnecessary?
-					controlmethod = G_InputMethodFromKey(ev->key);
+				if (!ignoregameinputs)
+				{
+					gamekeydown[ev->key] = 1;
+					if (G_KeyAssignedToControl(ev->key))
+						controlmethod = G_InputMethodFromKey(ev->key);
+				}
 			}
 #ifdef PARANOIA
 			else
@@ -216,7 +221,7 @@ void G_MapEventsToControls(event_t *ev)
 
 		case ev_joystick: // buttons are virtual keys
 			i = ev->key;
-			if (i >= JOYAXISSET || !G_InGameInput())
+			if (i >= JOYAXISSET || !G_InGameInput() || ignoregameinputs)
 				break;
 			if (ev->x != INT32_MAX) joyxmove[i] = ev->x;
 			if (ev->y != INT32_MAX) joyymove[i] = ev->y;
@@ -224,7 +229,7 @@ void G_MapEventsToControls(event_t *ev)
 
 		case ev_joystick2: // buttons are virtual keys
 			i = ev->key;
-			if (i >= JOYAXISSET || !G_InGameInput())
+			if (i >= JOYAXISSET || !G_InGameInput() || ignoregameinputs)
 				break;
 			if (ev->x != INT32_MAX) joy2xmove[i] = ev->x;
 			if (ev->y != INT32_MAX) joy2ymove[i] = ev->y;
@@ -1219,7 +1224,7 @@ static void setcontrol(INT32 (*gc)[2])
 	INT32 player = ((void*)gc == (void*)&gamecontrolbis ? 1 : 0);
 	boolean nestedoverride = false;
 
-	// Update me for 2.3
+	// TODO: 2.3: Delete the "use" alias
 	namectrl = (stricmp(COM_Argv(1), "use")) ? COM_Argv(1) : "spin";
 
 	for (numctrl = 0; numctrl < NUM_GAMECONTROLS && stricmp(namectrl, gamecontrolname[numctrl]);

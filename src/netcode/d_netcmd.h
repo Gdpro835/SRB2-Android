@@ -15,6 +15,8 @@
 #ifndef __D_NETCMD__
 #define __D_NETCMD__
 
+#include "command.h"
+#include "g_input.h"
 #include "../command.h"
 
 // console vars
@@ -35,6 +37,14 @@ extern consvar_t cv_seenames, cv_allowseenames;
 extern consvar_t cv_usemouse;
 extern consvar_t cv_usejoystick;
 extern consvar_t cv_usejoystick2;
+
+#ifdef ACCELEROMETER
+extern consvar_t cv_useaccelerometer;
+extern consvar_t cv_accelscale;
+extern consvar_t cv_acceltilt;
+extern consvar_t cv_acceldeadzone;
+#endif
+
 #ifdef LJOYSTICK
 extern consvar_t cv_joyport;
 extern consvar_t cv_joyport2;
@@ -112,6 +122,7 @@ extern consvar_t cv_skipmapcheck;
 
 extern consvar_t cv_sleep;
 
+extern consvar_t cv_thinkless;
 extern consvar_t cv_perfstats;
 extern consvar_t cv_ps_samplesize;
 extern consvar_t cv_ps_descriptor;

@@ -56,7 +56,6 @@
 #endif
 
 #ifdef _WINDOWS
-#define NONET
 #if !defined (HWRENDER) && !defined (NOHW)
 #define HWRENDER
 #endif
@@ -238,8 +237,7 @@ extern char logfilename[1024];
 "You will not be able to connect to\n"\
 "the Master Server until you update to\n"\
 "the newest version of the game.\n"\
-"\n"\
-"(Press a key)\n"
+"\n%s"
 
 // The string used in the I_Error alert upon trying to host through command line parameters.
 // Generally less filled with newlines, since Windows gives you lots more room to work with.
@@ -623,13 +621,16 @@ const char *M_TokenizerRead(UINT32 i);
 const char *M_TokenizerReadZDoom(UINT32 i);
 UINT32 M_TokenizerGetEndPos(void);
 void M_TokenizerSetEndPos(UINT32 newPos);
-UINT32 M_GetTokenPos(void);
-void M_TokenizerSetEndPos(UINT32 newPos);
 char *sizeu1(size_t num);
 char *sizeu2(size_t num);
 char *sizeu3(size_t num);
 char *sizeu4(size_t num);
 char *sizeu5(size_t num);
+
+char *M_GetToken(const char *inputString);
+void M_UnGetToken(void);
+UINT32 M_GetTokenPos(void);
+void M_SetTokenPos(UINT32 newPos);
 
 // d_main.c
 extern int    VERSION;
@@ -756,13 +757,14 @@ extern int
 ///	\note	XMOD port.
 //#define WEIGHTEDRECYCLER
 
-///	Allow loading of savegames between different versions of the game.
-///	\note	XMOD port.
-///	    	Most modifications should probably enable this.
-//#define SAVEGAME_OTHERVERSIONS
+/// Splash screen
+#ifdef MOBILE_PLATFORM
+#define SPLASH_SCREEN
+#endif
 
-///	Shuffle's incomplete OpenGL sorting code.
-#define SHUFFLE // This has nothing to do with sorting, why was it disabled?
+/// Breadcrumb navigation
+/// https://developer.android.com/training/tv/start/controllers#back-button
+#define BREADCRUMB
 
 ///	Allow the use of the SOC RESETINFO command.
 ///	\note	Builds that are tight on memory should disable this.
@@ -779,6 +781,10 @@ extern int
 
 /// OpenGL shaders
 #define GL_SHADERS
+
+#if defined(HAVE_GLES2) && !defined(GL_SHADERS)
+#define GL_SHADERS
+#endif
 
 /// Handle touching sector specials in P_PlayerAfterThink instead of P_PlayerThink.
 /// \note   Required for proper collision with moving sloped surfaces that have sector specials on them.

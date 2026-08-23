@@ -1,7 +1,7 @@
 // SONIC ROBO BLAST 2
 //-----------------------------------------------------------------------------
 // Copyright (C) 1998-2000 by DooM Legacy Team.
-// Copyright (C) 1999-2024 by Sonic Team Junior.
+// Copyright (C) 1999-2023 by Sonic Team Junior.
 //
 // This program is free software distributed under the
 // terms of the GNU General Public License, version 2.
@@ -341,7 +341,6 @@ light_t *t_lspr[NUMSPRITES] =
 	&lspr[NOLIGHT],     // SPR_BMCH
 	&lspr[NOLIGHT],     // SPR_SMCE
 	&lspr[NOLIGHT],     // SPR_BMCE
-	&lspr[NOLIGHT],     // SPR_BSPB
 	&lspr[NOLIGHT],     // SPR_YSPB
 	&lspr[NOLIGHT],     // SPR_RSPB
 	&lspr[REDBALL_L],   // SPR_SFBR
@@ -395,8 +394,6 @@ light_t *t_lspr[NUMSPRITES] =
 	&lspr[NOLIGHT],     // SPR_XMS4
 	&lspr[NOLIGHT],     // SPR_XMS5
 	&lspr[NOLIGHT],     // SPR_XMS6
-	&lspr[NOLIGHT],     // SPR_SNTT
-	&lspr[NOLIGHT],     // SPR_SSTT
 	&lspr[NOLIGHT],     // SPR_FHZI
 	&lspr[NOLIGHT],     // SPR_ROSY
 
@@ -430,8 +427,6 @@ light_t *t_lspr[NUMSPRITES] =
 	// Misc Scenery
 	&lspr[NOLIGHT],     // SPR_STLG
 	&lspr[NOLIGHT],     // SPR_DBAL
-	&lspr[NOLIGHT],     // SPR_GINE
-	&lspr[NOLIGHT],     // SPR_PPAL
 
 	// Powerup Indicators
 	&lspr[NOLIGHT],     // SPR_ARMA
@@ -617,9 +612,6 @@ light_t *t_lspr[NUMSPRITES] =
 	// Gravity Well Objects
 	&lspr[NOLIGHT],     // SPR_GWLG
 	&lspr[NOLIGHT],     // SPR_GWLR
-
-	// LJ Knuckles
-	&lspr[NOLIGHT],		// SPR_OLDK,
 
 	// Free slots
 	&lspr[NOLIGHT],
@@ -898,7 +890,7 @@ void HWR_WallLighting(FOutVector *wlVerts)
 		if (dynlights->mo[j]->state->nextstate == S_NULL)
 			Surf.PolyColor.s.alpha = (UINT8)(((float)dynlights->mo[j]->tics/(float)dynlights->mo[j]->state->tics)*Surf.PolyColor.s.alpha);
 
-		HWD.pfnDrawPolygon (&Surf, wlVerts, 4, LIGHTMAPFLAGS);
+		GPU->DrawPolygon (&Surf, wlVerts, 4, LIGHTMAPFLAGS);
 
 	} // end for (j = 0; j < dynlights->nb; j++)
 }
@@ -967,7 +959,7 @@ void HWR_PlaneLighting(FOutVector *clVerts, int nrClipVerts)
 		if ((dynlights->mo[j]->state->nextstate == S_NULL))
 			Surf.PolyColor.s.alpha = (unsigned char)(((float)dynlights->mo[j]->tics/(float)dynlights->mo[j]->state->tics)*Surf.PolyColor.s.alpha);
 
-		HWD.pfnDrawPolygon (&Surf, clVerts, nrClipVerts, LIGHTMAPFLAGS);
+		GPU->DrawPolygon (&Surf, clVerts, nrClipVerts, LIGHTMAPFLAGS);
 
 	} // end for (j = 0; j < dynlights->nb; j++)
 }
@@ -1062,9 +1054,9 @@ void HWR_DoCoronasLighting(FOutVector *outVerts, gl_vissprite_t *spr)
 		light[3].y = cy+size*1.33f+p_lspr->light_yoffset;
 		light[3].s = 0.0f;   light[3].t = 1.0f;
 
-		// HWR_GetPic(coronalumpnum);  /// \todo use different coronas
+		HWR_GetPic(coronalumpnum);  /// \todo use different coronas
 
-		HWD.pfnDrawPolygon (&Surf, light, 4, PF_Modulated | PF_Additive | PF_Corona | PF_NoDepthTest);
+		GPU->DrawPolygon (&Surf, light, 4, PF_Modulated | PF_Additive | PF_Corona | PF_NoDepthTest);
 	}
 }
 #endif
@@ -1078,7 +1070,7 @@ void HWR_DrawCoronas(void)
 	if (!cv_glcoronas.value || dynlights->nb <= 0 || coronalumpnum == LUMPERROR)
 		return;
 
-	// HWR_GetPic(coronalumpnum);  /// \todo use different coronas
+	HWR_GetPic(coronalumpnum);  /// \todo use different coronas
 	for (j = 0;j < dynlights->nb;j++)
 	{
 		FOutVector      light[4];
@@ -1152,7 +1144,7 @@ void HWR_DrawCoronas(void)
 		light[3].y = cy+size*1.33f;
 		light[3].s = 0.0f;   light[3].t = 1.0f;
 
-		HWD.pfnDrawPolygon (&Surf, light, 4, PF_Modulated | PF_Additive | PF_NoDepthTest | PF_Corona);
+		GPU->DrawPolygon (&Surf, light, 4, PF_Modulated | PF_Additive | PF_NoDepthTest | PF_Corona);
 	}
 }
 #endif
@@ -1261,7 +1253,7 @@ static void HWR_SetLight(void)
 		lightmappatch.mipmap->height = 128;
 		lightmappatch.mipmap->flags = 0; //TF_WRAPXY; // DEBUG: view the overdraw !
 	}
-	HWD.pfnSetTexture(lightmappatch.mipmap);
+	GPU->SetTexture(lightmappatch.mipmap);
 
 	// The system-memory data can be purged now.
 	Z_ChangeTag(lightmappatch.mipmap->data, PU_HWRCACHE_UNLOCKED);

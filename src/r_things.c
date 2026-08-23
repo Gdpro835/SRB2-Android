@@ -126,6 +126,16 @@ spritenum_t R_GetSpriteNumByName(const char *name)
 
 //
 //
+spritenum_t R_GetSpriteNumByName(const char *name)
+{
+	for (spritenum_t i = 0; i < NUMSPRITES; i++)
+		if (!strcmp(name, sprnames[i]))
+			return i;
+	return NUMSPRITES;
+}
+
+//
+//
 //
 static void R_InstallSpriteLump(UINT16 wad,            // graphics patch
                                 UINT16 lump,
@@ -716,6 +726,10 @@ void R_AddSpriteDefs(UINT16 wadnum)
 
 	AddShortSpriteDefs(wadnum, &spritesadded, &framesadded);
 	AddLongSpriteDefs(wadnum, &spritesadded, &framesadded);
+#ifdef HWRENDER
+	if (rendermode == render_opengl)
+		HWR_ReadModels();
+#endif
 
 	if (spritesadded || framesadded)
 	{
@@ -3907,3 +3921,4 @@ void R_DrawMasked(maskcount_t* masks, INT32 nummasks)
 
 	free(heads);
 }
+

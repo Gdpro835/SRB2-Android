@@ -93,6 +93,7 @@ void SV_StartSinglePlayerServer(void);
 void SV_SpawnServer(void);
 void SV_StopServer(void);
 void SV_ResetServer(void);
+
 void CL_AddSplitscreenPlayer(void);
 void CL_RemoveSplitscreenPlayer(void);
 void CL_Reset(void);

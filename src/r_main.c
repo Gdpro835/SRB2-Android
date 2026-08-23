@@ -155,7 +155,7 @@ consvar_t cv_shadow = CVAR_INIT ("shadow", "On", CV_SAVE, CV_OnOff, NULL);
 consvar_t cv_skybox = CVAR_INIT ("skybox", "On", CV_SAVE, CV_OnOff, NULL);
 consvar_t cv_allowmlook = CVAR_INIT ("allowmlook", "Yes", CV_NETVAR|CV_ALLOWLUA, CV_YesNo, NULL);
 consvar_t cv_showhud = CVAR_INIT ("showhud", "Yes", CV_CALL|CV_ALLOWLUA,  CV_YesNo, R_SetViewSize);
-consvar_t cv_translucenthud = CVAR_INIT ("translucenthud", "10", CV_SAVE, translucenthud_cons_t, NULL);
+consvar_t cv_translucenthud = CVAR_INIT ("translucenthud", "10", CV_SAVE|CV_SLIDER_SAFE, translucenthud_cons_t, NULL);
 
 consvar_t cv_translucency = CVAR_INIT ("translucency", "On", CV_SAVE, CV_OnOff, NULL);
 consvar_t cv_drawdist = CVAR_INIT ("drawdist", "Infinite", CV_SAVE, drawdist_cons_t, NULL);
@@ -591,6 +591,21 @@ static struct {
 	false
 };
 
+angle_t R_GetLocalViewRollAngle(player_t *player)
+{
+	angle_t ang = player->viewrollangle;
+
+#if defined(ACCELEROMETER) && defined(ACCELEROMETER_TILT_VIEW)
+	if (cv_useaccelerometer.value && gamestate == GS_LEVEL && player == &players[consoleplayer] && !splitscreen)
+	{
+		fixed_t accelangle = FixedDiv(acceltilt * FRACUNIT, 4096<<FRACBITS);
+		ang += FixedAngle(FixedMul(accelangle, 90<<FRACBITS));
+	}
+#endif
+
+	return ang;
+}
+
 void R_CheckViewMorph(void)
 {
 	float zoomfactor, rollcos, rollsin;
@@ -602,7 +617,7 @@ void R_CheckViewMorph(void)
 	float fisheyemap[MAXVIDWIDTH/2 + 1];
 #endif
 
-	angle_t rollangle = players[displayplayer].viewrollangle;
+	angle_t rollangle = R_GetLocalViewRollAngle(&players[displayplayer]);
 #ifdef WOUGHMP_WOUGHMP
 	fixed_t fisheye = cv_cam2_turnmultiplier.value; // temporary test value
 #endif
@@ -1533,17 +1548,20 @@ void R_RenderPlayerView(player_t *player)
 	R_ClearSprites();
 	Portal_InitList();
 
-	// check for new console commands.
+	// Check for new console commands.
 	NetUpdate();
 
-	// The head node is the last node output.
+	if (I_AppOnBackground())
+		return;
 
+	// The head node is the last node output.
 	Mask_Pre(&masks[nummasks - 1]);
 	curdrawsegs = ds_p;
 	ps_numbspcalls.value.i = ps_numpolyobjects.value.i = ps_numdrawnodes.value.i = 0;
 	PS_START_TIMING(ps_bsptime);
 	R_RenderBSPNode((INT32)numnodes - 1);
 	PS_STOP_TIMING(ps_bsptime);
+
 	Mask_Post(&masks[nummasks - 1]);
 
 	PS_START_TIMING(ps_sw_spritecliptime);
@@ -1632,6 +1650,11 @@ void R_RegisterEngineStuff(void)
 	// Do nothing for dedicated server
 	if (dedicated)
 		return;
+
+#ifdef MOBILE_PLATFORM // Override CVARs
+	// Change the default draw distance
+	cv_drawdist.defaultvalue = "4096";
+#endif
 
 	CV_RegisterVar(&cv_homremoval);
 	CV_RegisterVar(&cv_translucency);

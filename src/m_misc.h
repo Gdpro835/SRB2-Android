@@ -39,6 +39,13 @@ void M_StartMovie(void);
 void M_SaveFrame(void);
 void M_StopMovie(void);
 
+#ifdef HAVE_GLES
+#define SCREENSHOT_USE_RGBA
+#define SCREENSHOT_BITS 4
+#else
+#define SCREENSHOT_BITS 3
+#endif
+
 // the file where game vars and settings are saved
 #define CONFIGFILENAME "config.cfg"
 
@@ -58,6 +65,8 @@ boolean FIL_FileOK(char const *name);
 void FIL_DefaultExtension (char *path, const char *extension);
 void FIL_ForceExtension(char *path, const char *extension);
 boolean FIL_CheckExtension(const char *in);
+
+char *M_FindFile(const char *filename);
 
 #ifdef HAVE_PNG
 boolean M_SavePNG(const char *filename, void *data, int width, int height, const UINT8 *palette);

@@ -28,6 +28,13 @@ Documentation available here.
 #include "i_tcp.h"/* for current_port */
 #include "../i_threads.h"
 
+#if defined(__ANDROID__)
+#include "d_main.h" // srb2path
+#include "i_system.h" // I_mkdir
+#include "z_zone.h"
+#include "md5.h"
+#endif
+
 /* reasonable default I guess?? */
 #define DEFAULT_BUFFER_SIZE (4096)
 
@@ -133,6 +140,87 @@ HMS_on_read (char *s, size_t _1, size_t n, void *userdata)
 
 	return n;
 }
+
+#if defined(__ANDROID__)
+static char *hms_ca_bundle;
+static char *hms_cert_path;
+
+static void
+HMS_get_cert (void)
+{
+	const char *dir = "hms";
+	const char *pem = "cert";
+
+	if (! hms_ca_bundle)
+		hms_ca_bundle = Z_StrDup(va("%s"PATHSEP"%s", dir, pem));
+	if (! hms_cert_path)
+		hms_cert_path = Z_StrDup(va("%s"PATHSEP"%s", srb2path, hms_ca_bundle));
+
+	I_mkdir(va("%s"PATHSEP"%s", srb2path, dir), 0755);
+}
+
+static void *
+HMS_open_ca_bundle (void)
+{
+	return File_Open(hms_ca_bundle, "rb", FILEHANDLE_SDL);
+}
+
+static void
+HMS_set_cert (CURL *curl)
+{
+	void *saved_ca = NULL;
+	void *needed_ca = NULL;
+
+	boolean should_unpack = false;
+
+	HMS_get_cert();
+
+	if ((saved_ca = File_Open(hms_cert_path, "rb", FILEHANDLE_SDL)) == NULL)
+	{
+		needed_ca = HMS_open_ca_bundle();
+		should_unpack = true;
+	}
+	else
+	{
+		needed_ca = HMS_open_ca_bundle();
+
+#ifndef NOMD5
+		UINT8 saved_md5[16];
+		UINT8 needed_md5[16];
+
+		memset(saved_md5, 0x00, 16);
+		memset(needed_md5, 0x00, 16);
+
+		int statusA = md5_stream_whandle(saved_ca, saved_md5);
+		int statusB = md5_stream_whandle(needed_ca, needed_md5);
+
+		if (statusA == 0 && statusB == 0 && memcmp(saved_md5, needed_md5, 16) != 0)
+#endif
+		{
+			should_unpack = true;
+		}
+
+		File_Close(saved_ca);
+	}
+
+	if (needed_ca)
+	{
+		if (should_unpack)
+		{
+			CONS_Printf("HMS: saving CA bundle '%s'... ", hms_ca_bundle);
+
+			if (W_UnpackFile(hms_cert_path, needed_ca))
+				CONS_Printf("succeeded\n");
+			else
+				CONS_Printf("failed\n");
+		}
+
+		File_Close(needed_ca);
+	}
+
+	curl_easy_setopt(curl, CURLOPT_CAINFO, hms_cert_path);
+}
+#endif
 
 FUNCDEBUG static struct HMS_buffer *
 HMS_connect (int proto, const char *format, ...)
@@ -243,6 +331,10 @@ HMS_connect (int proto, const char *format, ...)
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, cv_masterserver_timeout.value);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, HMS_on_read);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, buffer);
+
+#if defined(__ANDROID__)
+	HMS_set_cert(curl);
+#endif
 
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, hms_useragent);
 

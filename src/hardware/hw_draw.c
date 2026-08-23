@@ -1,7 +1,7 @@
 // SONIC ROBO BLAST 2
 //-----------------------------------------------------------------------------
 // Copyright (C) 1998-2000 by DooM Legacy Team.
-// Copyright (C) 1999-2024 by Sonic Team Junior.
+// Copyright (C) 1999-2023 by Sonic Team Junior.
 //
 // This program is free software distributed under the
 // terms of the GNU General Public License, version 2.
@@ -22,6 +22,7 @@
 #include "hw_drv.h"
 
 #include "../m_misc.h" //FIL_WriteFile()
+#include "../r_draw.h" //viewborderlump
 #include "../r_main.h"
 #include "../w_wad.h"
 #include "../z_zone.h"
@@ -29,10 +30,13 @@
 #include "../st_stuff.h"
 #include "../p_local.h" // stplyr
 #include "../g_game.h" // players
-#include "../f_finale.h" // fade color factors
 
 #include <fcntl.h>
-#include "../i_video.h"
+#include "../i_video.h"  // for rendermode != render_glide
+
+#ifndef O_BINARY
+#define O_BINARY 0
+#endif
 
 #if defined(_MSC_VER)
 #pragma pack(1)
@@ -58,6 +62,67 @@ static UINT8 softwaretranstogl[11]    = {  0, 25, 51, 76,102,127,153,178,204,229
 static UINT8 softwaretranstogl_hi[11] = {  0, 51,102,153,204,255,255,255,255,255,255};
 static UINT8 softwaretranstogl_lo[11] = {  0, 12, 24, 36, 48, 60, 71, 83, 95,111,127};
 
+//
+// -----------------+
+// HWR_DrawPatch    : Draw a 'tile' graphic
+// Notes            : x,y : positions relative to the original Doom resolution
+//                  : textes(console+score) + menus + status bar
+// -----------------+
+void HWR_DrawPatch(patch_t *gpatch, INT32 x, INT32 y, INT32 option)
+{
+	FOutVector v[4];
+	FBITFIELD flags;
+	GLPatch_t *hwrPatch;
+
+//  3--2
+//  | /|
+//  |/ |
+//  0--1
+	float sdupx = FIXED_TO_FLOAT(vid.fdupx)*2.0f;
+	float sdupy = FIXED_TO_FLOAT(vid.fdupy)*2.0f;
+	float pdupx = FIXED_TO_FLOAT(vid.fdupx)*2.0f;
+	float pdupy = FIXED_TO_FLOAT(vid.fdupy)*2.0f;
+
+	// make patch ready in hardware cache
+	HWR_GetPatch(gpatch);
+	hwrPatch = ((GLPatch_t *)gpatch->hardware);
+
+	switch (option & V_SCALEPATCHMASK)
+	{
+	case V_NOSCALEPATCH:
+		pdupx = pdupy = 2.0f;
+		break;
+	case V_SMALLSCALEPATCH:
+		pdupx = 2.0f * FIXED_TO_FLOAT(vid.fsmalldupx);
+		pdupy = 2.0f * FIXED_TO_FLOAT(vid.fsmalldupy);
+		break;
+	case V_MEDSCALEPATCH:
+		pdupx = 2.0f * FIXED_TO_FLOAT(vid.fmeddupx);
+		pdupy = 2.0f * FIXED_TO_FLOAT(vid.fmeddupy);
+		break;
+	}
+
+	if (option & V_NOSCALESTART)
+		sdupx = sdupy = 2.0f;
+
+	v[0].x = v[3].x = (x*sdupx-(gpatch->leftoffset)*pdupx)/vid.width - 1;
+	v[2].x = v[1].x = (x*sdupx+(gpatch->width-gpatch->leftoffset)*pdupx)/vid.width - 1;
+	v[0].y = v[1].y = 1-(y*sdupy-(gpatch->topoffset)*pdupy)/vid.height;
+	v[2].y = v[3].y = 1-(y*sdupy+(gpatch->height-gpatch->topoffset)*pdupy)/vid.height;
+
+	v[0].z = v[1].z = v[2].z = v[3].z = 1.0f;
+
+	v[0].s = v[3].s = 0.0f;
+	v[2].s = v[1].s = hwrPatch->max_s;
+	v[0].t = v[1].t = 0.0f;
+	v[2].t = v[3].t = hwrPatch->max_t;
+
+	flags = PF_Translucent|PF_NoDepthTest;
+
+	// clip it since it is used for bunny scroll in doom I
+	GPU->DrawPolygon(NULL, v, 4, flags);
+}
+
 void HWR_DrawStretchyFixedPatch(patch_t *gpatch, fixed_t x, fixed_t y, fixed_t pscale, fixed_t vscale, INT32 option, const UINT8 *colormap)
 {
 	FOutVector v[4];
@@ -66,14 +131,13 @@ void HWR_DrawStretchyFixedPatch(patch_t *gpatch, fixed_t x, fixed_t y, fixed_t p
 	float cy = FIXED_TO_FLOAT(y);
 	UINT8 alphalevel = ((option & V_ALPHAMASK) >> V_ALPHASHIFT);
 	UINT8 blendmode = ((option & V_BLENDMASK) >> V_BLENDSHIFT);
-	UINT8 opacity = 0xFF;
 	GLPatch_t *hwrPatch;
 
 //  3--2
 //  | /|
 //  |/ |
 //  0--1
-	float dup, fscalew, fscaleh, fwidth, fheight;
+	float dupx, dupy, fscalew, fscaleh, fwidth, fheight;
 
 	UINT8 perplayershuffle = 0;
 
@@ -85,29 +149,25 @@ void HWR_DrawStretchyFixedPatch(patch_t *gpatch, fixed_t x, fixed_t y, fixed_t p
 
 	hwrPatch = ((GLPatch_t *)gpatch->hardware);
 
-	if (alphalevel)
-	{
-		if (alphalevel == 10) opacity = softwaretranstogl_lo[st_translucency]; // V_HUDTRANSHALF
-		else if (alphalevel == 11) opacity = softwaretranstogl[st_translucency]; // V_HUDTRANS
-		else if (alphalevel == 12) opacity = softwaretranstogl_hi[st_translucency]; // V_HUDTRANSDOUBLE
-		else opacity = softwaretranstogl[10-alphalevel];
-	}
-
-	dup = (float)vid.dup;
+	dupx = (float)vid.dupx;
+	dupy = (float)vid.dupy;
 
 	switch (option & V_SCALEPATCHMASK)
 	{
 	case V_NOSCALEPATCH:
-		dup = 1.0f;
+		dupx = dupy = 1.0f;
 		break;
 	case V_SMALLSCALEPATCH:
-		dup = (float)vid.smalldup;
+		dupx = (float)vid.smalldupx;
+		dupy = (float)vid.smalldupy;
 		break;
 	case V_MEDSCALEPATCH:
-		dup = (float)vid.meddup;
+		dupx = (float)vid.meddupx;
+		dupy = (float)vid.meddupy;
 		break;
 	}
 
+	dupx = dupy = (dupx < dupy ? dupx : dupy);
 	fscalew = fscaleh = FIXED_TO_FLOAT(pscale);
 	if (vscale != pscale)
 		fscaleh = FIXED_TO_FLOAT(vscale);
@@ -201,58 +261,58 @@ void HWR_DrawStretchyFixedPatch(patch_t *gpatch, fixed_t x, fixed_t y, fixed_t p
 
 	if (!(option & V_NOSCALESTART))
 	{
-		cx = cx * dup;
-		cy = cy * dup;
+		cx = cx * dupx;
+		cy = cy * dupy;
 
 		if (!(option & V_SCALEPATCHMASK))
 		{
 			// if it's meant to cover the whole screen, black out the rest (ONLY IF TOP LEFT ISN'T TRANSPARENT)
 			// cx and cy are possibly *slightly* off from float maths
 			// This is done before here compared to software because we directly alter cx and cy to centre
-			if (opacity == 0xFF && cx >= -0.1f && cx <= 0.1f && gpatch->width == BASEVIDWIDTH && cy >= -0.1f && cy <= 0.1f && gpatch->height == BASEVIDHEIGHT)
+			if (cx >= -0.1f && cx <= 0.1f && gpatch->width == BASEVIDWIDTH && cy >= -0.1f && cy <= 0.1f && gpatch->height == BASEVIDHEIGHT)
 			{
-				const column_t *column = &gpatch->columns[0];
-				if (column->num_posts && !column->posts[0].topdelta)
+				const column_t *column = (const column_t *)((const UINT8 *)(gpatch->columns) + (gpatch->columnofs[0]));
+				if (!column->topdelta)
 				{
-					const UINT8 *source = column->pixels;
-					HWR_DrawFill(0, 0, BASEVIDWIDTH, BASEVIDHEIGHT, source[0]);
+					const UINT8 *source = (const UINT8 *)(column) + 3;
+					HWR_DrawFill(0, 0, BASEVIDWIDTH, BASEVIDHEIGHT, (column->topdelta == 0xff ? 31 : source[0]));
 				}
 			}
 			// centre screen
-			if (fabsf((float)vid.width - (float)BASEVIDWIDTH * dup) > 1.0E-36f)
+			if (fabsf((float)vid.width - (float)BASEVIDWIDTH * dupx) > 1.0E-36f)
 			{
 				if (option & V_SNAPTORIGHT)
-					cx += ((float)vid.width - ((float)BASEVIDWIDTH * dup));
+					cx += ((float)vid.width - ((float)BASEVIDWIDTH * dupx));
 				else if (!(option & V_SNAPTOLEFT))
-					cx += ((float)vid.width - ((float)BASEVIDWIDTH * dup))/2;
+					cx += ((float)vid.width - ((float)BASEVIDWIDTH * dupx))/2;
 				if (perplayershuffle & 4)
-					cx -= ((float)vid.width - ((float)BASEVIDWIDTH * dup))/4;
+					cx -= ((float)vid.width - ((float)BASEVIDWIDTH * dupx))/4;
 				else if (perplayershuffle & 8)
-					cx += ((float)vid.width - ((float)BASEVIDWIDTH * dup))/4;
+					cx += ((float)vid.width - ((float)BASEVIDWIDTH * dupx))/4;
 			}
-			if (fabsf((float)vid.height - (float)BASEVIDHEIGHT * dup) > 1.0E-36f)
+			if (fabsf((float)vid.height - (float)BASEVIDHEIGHT * dupy) > 1.0E-36f)
 			{
 				if (option & V_SNAPTOBOTTOM)
-					cy += ((float)vid.height - ((float)BASEVIDHEIGHT * dup));
+					cy += ((float)vid.height - ((float)BASEVIDHEIGHT * dupy));
 				else if (!(option & V_SNAPTOTOP))
-					cy += ((float)vid.height - ((float)BASEVIDHEIGHT * dup))/2;
+					cy += ((float)vid.height - ((float)BASEVIDHEIGHT * dupy))/2;
 				if (perplayershuffle & 1)
-					cy -= ((float)vid.height - ((float)BASEVIDHEIGHT * dup))/4;
+					cy -= ((float)vid.height - ((float)BASEVIDHEIGHT * dupy))/4;
 				else if (perplayershuffle & 2)
-					cy += ((float)vid.height - ((float)BASEVIDHEIGHT * dup))/4;
+					cy += ((float)vid.height - ((float)BASEVIDHEIGHT * dupy))/4;
 			}
 		}
 	}
 
 	if (pscale != FRACUNIT || vscale != FRACUNIT || (splitscreen && option & V_PERPLAYER))
 	{
-		fwidth = (float)(gpatch->width) * fscalew * dup;
-		fheight = (float)(gpatch->height) * fscaleh * dup;
+		fwidth = (float)(gpatch->width) * fscalew * dupx;
+		fheight = (float)(gpatch->height) * fscaleh * dupy;
 	}
 	else
 	{
-		fwidth = (float)(gpatch->width) * dup;
-		fheight = (float)(gpatch->height) * dup;
+		fwidth = (float)(gpatch->width) * dupx;
+		fheight = (float)(gpatch->height) * dupy;
 	}
 
 	// positions of the cx, cy, are between 0 and vid.width/vid.height now, we need them to be between -1 and 1
@@ -293,12 +353,16 @@ void HWR_DrawStretchyFixedPatch(patch_t *gpatch, fixed_t x, fixed_t y, fixed_t p
 	{
 		FSurfaceInfo Surf;
 		Surf.PolyColor.s.red = Surf.PolyColor.s.green = Surf.PolyColor.s.blue = 0xff;
-		Surf.PolyColor.s.alpha = opacity;
+
+		if (alphalevel == 10) Surf.PolyColor.s.alpha = softwaretranstogl_lo[st_translucency]; // V_HUDTRANSHALF
+		else if (alphalevel == 11) Surf.PolyColor.s.alpha = softwaretranstogl[st_translucency]; // V_HUDTRANS
+		else if (alphalevel == 12) Surf.PolyColor.s.alpha = softwaretranstogl_hi[st_translucency]; // V_HUDTRANSDOUBLE
+		else Surf.PolyColor.s.alpha = softwaretranstogl[10-alphalevel];
 		flags |= PF_Modulated;
-		HWD.pfnDrawPolygon(&Surf, v, 4, flags);
+		GPU->DrawPolygon(&Surf, v, 4, flags);
 	}
 	else
-		HWD.pfnDrawPolygon(NULL, v, 4, flags);
+		GPU->DrawPolygon(NULL, v, 4, flags);
 }
 
 void HWR_DrawCroppedPatch(patch_t *gpatch, fixed_t x, fixed_t y, fixed_t pscale, fixed_t vscale, INT32 option, const UINT8 *colormap, fixed_t sx, fixed_t sy, fixed_t w, fixed_t h)
@@ -315,7 +379,7 @@ void HWR_DrawCroppedPatch(patch_t *gpatch, fixed_t x, fixed_t y, fixed_t pscale,
 //  | /|
 //  |/ |
 //  0--1
-	float dup, fscalew, fscaleh, fwidth, fheight;
+	float dupx, dupy, fscalew, fscaleh, fwidth, fheight;
 
 	UINT8 perplayershuffle = 0;
 
@@ -327,21 +391,25 @@ void HWR_DrawCroppedPatch(patch_t *gpatch, fixed_t x, fixed_t y, fixed_t pscale,
 
 	hwrPatch = ((GLPatch_t *)gpatch->hardware);
 
-	dup = (float)vid.dup;
+	dupx = (float)vid.dupx;
+	dupy = (float)vid.dupy;
 
 	switch (option & V_SCALEPATCHMASK)
 	{
 	case V_NOSCALEPATCH:
-		dup = 1.0f;
+		dupx = dupy = 1.0f;
 		break;
 	case V_SMALLSCALEPATCH:
-		dup = (float)vid.smalldup;
+		dupx = (float)vid.smalldupx;
+		dupy = (float)vid.smalldupy;
 		break;
 	case V_MEDSCALEPATCH:
-		dup = (float)vid.meddup;
+		dupx = (float)vid.meddupx;
+		dupy = (float)vid.meddupy;
 		break;
 	}
 
+	dupx = dupy = (dupx < dupy ? dupx : dupy);
 	fscalew = fscaleh = FIXED_TO_FLOAT(pscale);
 	if (vscale != pscale)
 		fscaleh = FIXED_TO_FLOAT(vscale);
@@ -419,8 +487,8 @@ void HWR_DrawCroppedPatch(patch_t *gpatch, fixed_t x, fixed_t y, fixed_t pscale,
 
 	if (!(option & V_NOSCALESTART))
 	{
-		cx = cx * dup;
-		cy = cy * dup;
+		cx = cx * dupx;
+		cy = cy * dupy;
 
 		if (!(option & V_SCALEPATCHMASK))
 		{
@@ -428,27 +496,27 @@ void HWR_DrawCroppedPatch(patch_t *gpatch, fixed_t x, fixed_t y, fixed_t pscale,
 			// no the patch is cropped do not do this ever
 
 			// centre screen
-			if (fabsf((float)vid.width - (float)BASEVIDWIDTH * dup) > 1.0E-36f)
+			if (fabsf((float)vid.width - (float)BASEVIDWIDTH * dupx) > 1.0E-36f)
 			{
 				if (option & V_SNAPTORIGHT)
-					cx += ((float)vid.width - ((float)BASEVIDWIDTH * dup));
+					cx += ((float)vid.width - ((float)BASEVIDWIDTH * dupx));
 				else if (!(option & V_SNAPTOLEFT))
-					cx += ((float)vid.width - ((float)BASEVIDWIDTH * dup))/2;
+					cx += ((float)vid.width - ((float)BASEVIDWIDTH * dupx))/2;
 				if (perplayershuffle & 4)
-					cx -= ((float)vid.width - ((float)BASEVIDWIDTH * dup))/4;
+					cx -= ((float)vid.width - ((float)BASEVIDWIDTH * dupx))/4;
 				else if (perplayershuffle & 8)
-					cx += ((float)vid.width - ((float)BASEVIDWIDTH * dup))/4;
+					cx += ((float)vid.width - ((float)BASEVIDWIDTH * dupx))/4;
 			}
-			if (fabsf((float)vid.height - (float)BASEVIDHEIGHT * dup) > 1.0E-36f)
+			if (fabsf((float)vid.height - (float)BASEVIDHEIGHT * dupy) > 1.0E-36f)
 			{
 				if (option & V_SNAPTOBOTTOM)
-					cy += ((float)vid.height - ((float)BASEVIDHEIGHT * dup));
+					cy += ((float)vid.height - ((float)BASEVIDHEIGHT * dupy));
 				else if (!(option & V_SNAPTOTOP))
-					cy += ((float)vid.height - ((float)BASEVIDHEIGHT * dup))/2;
+					cy += ((float)vid.height - ((float)BASEVIDHEIGHT * dupy))/2;
 				if (perplayershuffle & 1)
-					cy -= ((float)vid.height - ((float)BASEVIDHEIGHT * dup))/4;
+					cy -= ((float)vid.height - ((float)BASEVIDHEIGHT * dupy))/4;
 				else if (perplayershuffle & 2)
-					cy += ((float)vid.height - ((float)BASEVIDHEIGHT * dup))/4;
+					cy += ((float)vid.height - ((float)BASEVIDHEIGHT * dupy))/4;
 			}
 		}
 	}
@@ -464,13 +532,13 @@ void HWR_DrawCroppedPatch(patch_t *gpatch, fixed_t x, fixed_t y, fixed_t pscale,
 
 	if (pscale != FRACUNIT || vscale != FRACUNIT || (splitscreen && option & V_PERPLAYER))
 	{
-		fwidth *= fscalew * dup;
-		fheight *= fscaleh * dup;
+		fwidth *= fscalew * dupx;
+		fheight *= fscaleh * dupy;
 	}
 	else
 	{
-		fwidth *= dup;
-		fheight *= dup;
+		fwidth *= dupx;
+		fheight *= dupy;
 	}
 
 	// positions of the cx, cy, are between 0 and vid.width/vid.height now, we need them to be between -1 and 1
@@ -586,15 +654,51 @@ void HWR_DrawCroppedPatch(patch_t *gpatch, fixed_t x, fixed_t y, fixed_t pscale,
 		else Surf.PolyColor.s.alpha = softwaretranstogl[10-alphalevel];
 
 		flags |= PF_Modulated;
-		HWD.pfnDrawPolygon(&Surf, v, 4, flags);
+		GPU->DrawPolygon(&Surf, v, 4, flags);
 	}
 	else
-		HWD.pfnDrawPolygon(NULL, v, 4, flags);
+		GPU->DrawPolygon(NULL, v, 4, flags);
+}
+
+void HWR_DrawPic(INT32 x, INT32 y, lumpnum_t lumpnum)
+{
+	FOutVector      v[4];
+	const patch_t    *patch;
+
+	// make pic ready in hardware cache
+	patch = HWR_GetPic(lumpnum);
+
+//  3--2
+//  | /|
+//  |/ |
+//  0--1
+
+	v[0].x = v[3].x = 2.0f * (float)x/vid.width - 1;
+	v[2].x = v[1].x = 2.0f * (float)(x + patch->width*FIXED_TO_FLOAT(vid.fdupx))/vid.width - 1;
+	v[0].y = v[1].y = 1.0f - 2.0f * (float)y/vid.height;
+	v[2].y = v[3].y = 1.0f - 2.0f * (float)(y + patch->height*FIXED_TO_FLOAT(vid.fdupy))/vid.height;
+
+	v[0].z = v[1].z = v[2].z = v[3].z = 1.0f;
+
+	v[0].s = v[3].s = 0;
+	v[2].s = v[1].s = ((GLPatch_t *)patch->hardware)->max_s;
+	v[0].t = v[1].t = 0;
+	v[2].t = v[3].t = ((GLPatch_t *)patch->hardware)->max_t;
+
+
+	//Hurdler: Boris, the same comment as above... but maybe for pics
+	// it not a problem since they don't have any transparent pixel
+	// if I'm right !?
+	// But then, the question is: why not 0 instead of PF_Masked ?
+	// or maybe PF_Environment ??? (like what I said above)
+	// BP: PF_Environment don't change anything ! and 0 is undifined
+	GPU->DrawPolygon(NULL, v, 4, PF_Translucent | PF_NoDepthTest);
 }
 
 // ==========================================================================
 //                                                            V_VIDEO.C STUFF
 // ==========================================================================
+
 
 // --------------------------------------------------------------------------
 // Fills a box of pixels using a flat texture as a pattern
@@ -631,7 +735,7 @@ void HWR_DrawFlatFill (INT32 x, INT32 y, INT32 w, INT32 h, lumpnum_t flatlumpnum
 	// BTW, I see we put 0 for PFs, and If I'm right, that
 	// means we take the previous PFs as default
 	// how can we be sure they are ok?
-	HWD.pfnDrawPolygon(NULL, v, 4, PF_NoDepthTest); //PF_Translucent);
+	GPU->DrawPolygon(NULL, v, 4, PF_NoDepthTest); //PF_Translucent);
 }
 
 
@@ -646,7 +750,6 @@ void HWR_FadeScreenMenuBack(UINT16 color, UINT8 strength)
 {
 	FOutVector  v[4];
 	FSurfaceInfo Surf;
-	FBITFIELD poly_flags = PF_NoTexture|PF_Modulated|PF_NoDepthTest;
 
 	v[0].x = v[3].x = -1.0f;
 	v[2].x = v[1].x =  1.0f;
@@ -659,59 +762,17 @@ void HWR_FadeScreenMenuBack(UINT16 color, UINT8 strength)
 	v[0].t = v[1].t = 1.0f;
 	v[2].t = v[3].t = 0.0f;
 
-	if (color & 0xFF00) // Special fade options
+	if (color & 0xFF00) // Do COLORMAP fade.
 	{
-		UINT16 option = color & 0x0F00;
-		if (option == 0x0A00 || option == 0x0B00) // Tinted fades
-		{
-			INT32 r, g, b;
-			int fade = strength * 8;
-
-			r = FADEREDFACTOR*fade/10;
-			g = FADEGREENFACTOR*fade/10;
-			b = FADEBLUEFACTOR*fade/10;
-
-			Surf.PolyColor.s.red = min(r, 255);
-			Surf.PolyColor.s.green = min(g, 255);
-			Surf.PolyColor.s.blue = min(b, 255);
-			Surf.PolyColor.s.alpha = 255;
-
-			if (option == 0x0A00) // Tinted subtractive fade
-				poly_flags |= PF_ReverseSubtract;
-			else if (option == 0x0B00) // Tinted additive fade
-				poly_flags |= PF_Additive;
-		}
-		else // COLORMAP fade
-		{
-			if (HWR_ShouldUsePaletteRendering())
-			{
-				const hwdscreentexture_t scr_tex = HWD_SCREENTEXTURE_GENERIC2;
-
-				Surf.LightTableId = HWR_GetLightTableID(NULL);
-				Surf.LightInfo.light_level = strength;
-				HWD.pfnMakeScreenTexture(scr_tex);
-				HWD.pfnSetShader(HWR_GetShaderFromTarget(SHADER_UI_COLORMAP_FADE));
-				HWD.pfnDrawScreenTexture(scr_tex, &Surf, PF_ColorMapped|PF_NoDepthTest);
-				HWD.pfnUnSetShader();
-
-				return;
-			}
-			else
-			{
-				Surf.PolyColor.rgba = UINT2RGBA(0x01010160);
-				Surf.PolyColor.s.alpha = (strength*8);
-				poly_flags |= PF_Translucent;
-			}
-		}
+		Surf.PolyColor.rgba = UINT2RGBA(0x01010160);
+		Surf.PolyColor.s.alpha = (strength*8);
 	}
 	else // Do TRANSMAP** fade.
 	{
-		RGBA_t *palette = HWR_GetTexturePalette();
-		Surf.PolyColor.rgba = palette[color&0xFF].rgba;
+		Surf.PolyColor.rgba = V_GetColor(color).rgba;
 		Surf.PolyColor.s.alpha = softwaretranstogl[strength];
-		poly_flags |= PF_Translucent;
 	}
-	HWD.pfnDrawPolygon(&Surf, v, 4, poly_flags);
+	GPU->DrawPolygon(&Surf, v, 4, PF_NoTexture|PF_Modulated|PF_Translucent|PF_NoDepthTest);
 }
 
 // -----------------+
@@ -805,33 +866,35 @@ void HWR_DrawFadeFill(INT32 x, INT32 y, INT32 w, INT32 h, INT32 color, UINT16 ac
 
 	if (!(color & V_NOSCALESTART))
 	{
-		fx *= vid.dup;
-		fy *= vid.dup;
-		fw *= vid.dup;
-		fh *= vid.dup;
+		float dupx = (float)vid.dupx, dupy = (float)vid.dupy;
 
-		if (fabsf((float)vid.width - (float)BASEVIDWIDTH * vid.dup) > 1.0E-36f)
+		fx *= dupx;
+		fy *= dupy;
+		fw *= dupx;
+		fh *= dupy;
+
+		if (fabsf((float)vid.width - (float)BASEVIDWIDTH * dupx) > 1.0E-36f)
 		{
 			if (color & V_SNAPTORIGHT)
-				fx += ((float)vid.width - ((float)BASEVIDWIDTH * vid.dup));
+				fx += ((float)vid.width - ((float)BASEVIDWIDTH * dupx));
 			else if (!(color & V_SNAPTOLEFT))
-				fx += ((float)vid.width - ((float)BASEVIDWIDTH * vid.dup)) / 2;
+				fx += ((float)vid.width - ((float)BASEVIDWIDTH * dupx)) / 2;
 			if (perplayershuffle & 4)
-				fx -= ((float)vid.width - ((float)BASEVIDWIDTH * vid.dup)) / 4;
+				fx -= ((float)vid.width - ((float)BASEVIDWIDTH * dupx)) / 4;
 			else if (perplayershuffle & 8)
-				fx += ((float)vid.width - ((float)BASEVIDWIDTH * vid.dup)) / 4;
+				fx += ((float)vid.width - ((float)BASEVIDWIDTH * dupx)) / 4;
 		}
-		if (fabsf((float)vid.height - (float)BASEVIDHEIGHT * vid.dup) > 1.0E-36f)
+		if (fabsf((float)vid.height - (float)BASEVIDHEIGHT * dupy) > 1.0E-36f)
 		{
 			// same thing here
 			if (color & V_SNAPTOBOTTOM)
-				fy += ((float)vid.height - ((float)BASEVIDHEIGHT * vid.dup));
+				fy += ((float)vid.height - ((float)BASEVIDHEIGHT * dupy));
 			else if (!(color & V_SNAPTOTOP))
-				fy += ((float)vid.height - ((float)BASEVIDHEIGHT * vid.dup)) / 2;
+				fy += ((float)vid.height - ((float)BASEVIDHEIGHT * dupy)) / 2;
 			if (perplayershuffle & 1)
-				fy -= ((float)vid.height - ((float)BASEVIDHEIGHT * vid.dup)) / 4;
+				fy -= ((float)vid.height - ((float)BASEVIDHEIGHT * dupy)) / 4;
 			else if (perplayershuffle & 2)
-				fy += ((float)vid.height - ((float)BASEVIDHEIGHT * vid.dup)) / 4;
+				fy += ((float)vid.height - ((float)BASEVIDHEIGHT * dupy)) / 4;
 		}
 	}
 
@@ -879,11 +942,10 @@ void HWR_DrawFadeFill(INT32 x, INT32 y, INT32 w, INT32 h, INT32 color, UINT16 ac
 	}
 	else // Do TRANSMAP** fade.
 	{
-		RGBA_t *palette = HWR_GetTexturePalette();
-		Surf.PolyColor.rgba = palette[actualcolor&0xFF].rgba;
+		Surf.PolyColor.rgba = V_GetColor(actualcolor).rgba;
 		Surf.PolyColor.s.alpha = softwaretranstogl[strength];
 	}
-	HWD.pfnDrawPolygon(&Surf, v, 4, PF_NoTexture|PF_Modulated|PF_Translucent|PF_NoDepthTest);
+	GPU->DrawPolygon(&Surf, v, 4, PF_NoTexture|PF_Modulated|PF_Translucent|PF_NoDepthTest);
 }
 
 // Draw the console background with translucency support
@@ -910,7 +972,7 @@ void HWR_DrawConsoleBack(UINT32 color, INT32 height)
 	Surf.PolyColor.rgba = UINT2RGBA(color);
 	Surf.PolyColor.s.alpha = 0x80;
 
-	HWD.pfnDrawPolygon(&Surf, v, 4, PF_NoTexture|PF_Modulated|PF_Translucent|PF_NoDepthTest);
+	GPU->DrawPolygon(&Surf, v, 4, PF_NoTexture|PF_Modulated|PF_Translucent|PF_NoDepthTest);
 }
 
 // Very similar to HWR_DrawConsoleBack, except we draw from the middle(-ish) of the screen to the bottom.
@@ -940,8 +1002,138 @@ void HWR_DrawTutorialBack(UINT32 color, INT32 boxheight)
 	Surf.PolyColor.rgba = UINT2RGBA(color);
 	Surf.PolyColor.s.alpha = (color == 0 ? 0xC0 : 0x80); // make black darker, like software
 
-	HWD.pfnDrawPolygon(&Surf, v, 4, PF_NoTexture|PF_Modulated|PF_Translucent|PF_NoDepthTest);
+	GPU->DrawPolygon(&Surf, v, 4, PF_NoTexture|PF_Modulated|PF_Translucent|PF_NoDepthTest);
 }
+
+
+// ==========================================================================
+//                                                             R_DRAW.C STUFF
+// ==========================================================================
+
+// ------------------
+// HWR_DrawViewBorder
+// Fill the space around the view window with a Doom flat texture, draw the
+// beveled edges.
+// 'clearlines' is useful to clear the heads up messages, when the view
+// window is reduced, it doesn't refresh all the view borders.
+// ------------------
+void HWR_DrawViewBorder(INT32 clearlines)
+{
+	INT32 x, y;
+	INT32 top, side;
+	INT32 baseviewwidth, baseviewheight;
+	INT32 basewindowx, basewindowy;
+	patch_t *patch;
+
+//    if (gl_viewwidth == vid.width)
+//        return;
+
+	if (!clearlines)
+		clearlines = BASEVIDHEIGHT; // refresh all
+
+	// calc view size based on original game resolution
+	baseviewwidth =  FixedInt(FixedDiv(FLOAT_TO_FIXED(gl_viewwidth), vid.fdupx)); //(cv_viewsize.value * BASEVIDWIDTH/10)&~7;
+	baseviewheight = FixedInt(FixedDiv(FLOAT_TO_FIXED(gl_viewheight), vid.fdupy));
+	top = FixedInt(FixedDiv(FLOAT_TO_FIXED(gl_baseviewwindowy), vid.fdupy));
+	side = FixedInt(FixedDiv(FLOAT_TO_FIXED(gl_viewwindowx), vid.fdupx));
+
+	// top
+	HWR_DrawFlatFill(0, 0,
+		BASEVIDWIDTH, (top < clearlines ? top : clearlines),
+		st_borderpatchnum);
+
+	// left
+	if (top < clearlines)
+		HWR_DrawFlatFill(0, top, side,
+			(clearlines-top < baseviewheight ? clearlines-top : baseviewheight),
+			st_borderpatchnum);
+
+	// right
+	if (top < clearlines)
+		HWR_DrawFlatFill(side + baseviewwidth, top, side,
+			(clearlines-top < baseviewheight ? clearlines-top : baseviewheight),
+			st_borderpatchnum);
+
+	// bottom
+	if (top + baseviewheight < clearlines)
+		HWR_DrawFlatFill(0, top + baseviewheight,
+			BASEVIDWIDTH, BASEVIDHEIGHT, st_borderpatchnum);
+
+	//
+	// draw the view borders
+	//
+
+	basewindowx = (BASEVIDWIDTH - baseviewwidth)>>1;
+	if (baseviewwidth == BASEVIDWIDTH)
+		basewindowy = 0;
+	else
+		basewindowy = top;
+
+	// top edge
+	if (clearlines > basewindowy - 8)
+	{
+		patch = W_CachePatchNum(viewborderlump[BRDR_T], PU_PATCH);
+		for (x = 0; x < baseviewwidth; x += 8)
+			HWR_DrawPatch(patch, basewindowx + x, basewindowy - 8,
+				0);
+	}
+
+	// bottom edge
+	if (clearlines > basewindowy + baseviewheight)
+	{
+		patch = W_CachePatchNum(viewborderlump[BRDR_B], PU_PATCH);
+		for (x = 0; x < baseviewwidth; x += 8)
+			HWR_DrawPatch(patch, basewindowx + x,
+				basewindowy + baseviewheight, 0);
+	}
+
+	// left edge
+	if (clearlines > basewindowy)
+	{
+		patch = W_CachePatchNum(viewborderlump[BRDR_L], PU_PATCH);
+		for (y = 0; y < baseviewheight && basewindowy + y < clearlines;
+			y += 8)
+		{
+			HWR_DrawPatch(patch, basewindowx - 8, basewindowy + y,
+				0);
+		}
+	}
+
+	// right edge
+	if (clearlines > basewindowy)
+	{
+		patch = W_CachePatchNum(viewborderlump[BRDR_R], PU_PATCH);
+		for (y = 0; y < baseviewheight && basewindowy+y < clearlines;
+			y += 8)
+		{
+			HWR_DrawPatch(patch, basewindowx + baseviewwidth,
+				basewindowy + y, 0);
+		}
+	}
+
+	// Draw beveled corners.
+	if (clearlines > basewindowy - 8)
+		HWR_DrawPatch(W_CachePatchNum(viewborderlump[BRDR_TL],
+				PU_PATCH),
+			basewindowx - 8, basewindowy - 8, 0);
+
+	if (clearlines > basewindowy - 8)
+		HWR_DrawPatch(W_CachePatchNum(viewborderlump[BRDR_TR],
+				PU_PATCH),
+			basewindowx + baseviewwidth, basewindowy - 8, 0);
+
+	if (clearlines > basewindowy+baseviewheight)
+		HWR_DrawPatch(W_CachePatchNum(viewborderlump[BRDR_BL],
+				PU_PATCH),
+			basewindowx - 8, basewindowy + baseviewheight, 0);
+
+	if (clearlines > basewindowy + baseviewheight)
+		HWR_DrawPatch(W_CachePatchNum(viewborderlump[BRDR_BR],
+				PU_PATCH),
+			basewindowx + baseviewwidth,
+			basewindowy + baseviewheight, 0);
+}
+
 
 // ==========================================================================
 //                                                     AM_MAP.C DRAWING STUFF
@@ -955,9 +1147,8 @@ void HWR_drawAMline(const fline_t *fl, INT32 color)
 {
 	F2DCoord v1, v2;
 	RGBA_t color_rgba;
-	RGBA_t *palette = HWR_GetTexturePalette();
 
-	color_rgba = palette[color&0xFF];
+	color_rgba = V_GetColor(color);
 
 	v1.x = ((float)fl->a.x-(vid.width/2.0f))*(2.0f/vid.width);
 	v1.y = ((float)fl->a.y-(vid.height/2.0f))*(2.0f/vid.height);
@@ -965,7 +1156,7 @@ void HWR_drawAMline(const fline_t *fl, INT32 color)
 	v2.x = ((float)fl->b.x-(vid.width/2.0f))*(2.0f/vid.width);
 	v2.y = ((float)fl->b.y-(vid.height/2.0f))*(2.0f/vid.height);
 
-	HWD.pfnDraw2DLine(&v1, &v2, color_rgba);
+	GPU->Draw2DLine(&v1, &v2, color_rgba);
 }
 
 // -------------------+
@@ -1059,35 +1250,35 @@ void HWR_DrawConsoleFill(INT32 x, INT32 y, INT32 w, INT32 h, INT32 color, UINT32
 
 	if (!(color & V_NOSCALESTART))
 	{
-		float dup = (float)vid.dup;
+		float dupx = (float)vid.dupx, dupy = (float)vid.dupy;
 
-		fx *= dup;
-		fy *= dup;
-		fw *= dup;
-		fh *= dup;
+		fx *= dupx;
+		fy *= dupy;
+		fw *= dupx;
+		fh *= dupy;
 
-		if (fabsf((float)vid.width - (float)BASEVIDWIDTH * dup) > 1.0E-36f)
+		if (fabsf((float)vid.width - (float)BASEVIDWIDTH * dupx) > 1.0E-36f)
 		{
 			if (color & V_SNAPTORIGHT)
-				fx += ((float)vid.width - ((float)BASEVIDWIDTH * dup));
+				fx += ((float)vid.width - ((float)BASEVIDWIDTH * dupx));
 			else if (!(color & V_SNAPTOLEFT))
-				fx += ((float)vid.width - ((float)BASEVIDWIDTH * dup)) / 2;
+				fx += ((float)vid.width - ((float)BASEVIDWIDTH * dupx)) / 2;
 			if (perplayershuffle & 4)
-				fx -= ((float)vid.width - ((float)BASEVIDWIDTH * dup)) / 4;
+				fx -= ((float)vid.width - ((float)BASEVIDWIDTH * dupx)) / 4;
 			else if (perplayershuffle & 8)
-				fx += ((float)vid.width - ((float)BASEVIDWIDTH * dup)) / 4;
+				fx += ((float)vid.width - ((float)BASEVIDWIDTH * dupx)) / 4;
 		}
-		if (fabsf((float)vid.height - (float)BASEVIDHEIGHT * dup) > 1.0E-36f)
+		if (fabsf((float)vid.height - (float)BASEVIDHEIGHT * dupy) > 1.0E-36f)
 		{
 			// same thing here
 			if (color & V_SNAPTOBOTTOM)
-				fy += ((float)vid.height - ((float)BASEVIDHEIGHT * dup));
+				fy += ((float)vid.height - ((float)BASEVIDHEIGHT * dupy));
 			else if (!(color & V_SNAPTOTOP))
-				fy += ((float)vid.height - ((float)BASEVIDHEIGHT * dup)) / 2;
+				fy += ((float)vid.height - ((float)BASEVIDHEIGHT * dupy)) / 2;
 			if (perplayershuffle & 1)
-				fy -= ((float)vid.height - ((float)BASEVIDHEIGHT * dup)) / 4;
+				fy -= ((float)vid.height - ((float)BASEVIDHEIGHT * dupy)) / 4;
 			else if (perplayershuffle & 2)
-				fy += ((float)vid.height - ((float)BASEVIDHEIGHT * dup)) / 4;
+				fy += ((float)vid.height - ((float)BASEVIDHEIGHT * dupy)) / 4;
 		}
 	}
 
@@ -1131,7 +1322,7 @@ void HWR_DrawConsoleFill(INT32 x, INT32 y, INT32 w, INT32 h, INT32 color, UINT32
 	Surf.PolyColor.rgba = UINT2RGBA(actualcolor);
 	Surf.PolyColor.s.alpha = 0x80;
 
-	HWD.pfnDrawPolygon(&Surf, v, 4, PF_NoTexture|PF_Modulated|PF_Translucent|PF_NoDepthTest);
+	GPU->DrawPolygon(&Surf, v, 4, PF_NoTexture|PF_Modulated|PF_Translucent|PF_NoDepthTest);
 }
 
 // -----------------+
@@ -1142,8 +1333,6 @@ void HWR_DrawFill(INT32 x, INT32 y, INT32 w, INT32 h, INT32 color)
 	FOutVector v[4];
 	FSurfaceInfo Surf;
 	float fx, fy, fw, fh;
-	RGBA_t *palette = HWR_GetTexturePalette();
-	UINT8 alphalevel = ((color & V_ALPHAMASK) >> V_ALPHASHIFT);
 
 	UINT8 perplayershuffle = 0;
 
@@ -1227,45 +1416,47 @@ void HWR_DrawFill(INT32 x, INT32 y, INT32 w, INT32 h, INT32 color)
 
 	if (!(color & V_NOSCALESTART))
 	{
+		float dupx = (float)vid.dupx, dupy = (float)vid.dupy;
+
 		if (x == 0 && y == 0 && w == BASEVIDWIDTH && h == BASEVIDHEIGHT)
 		{
-			RGBA_t rgbaColour = palette[color&0xFF];
+			RGBA_t rgbaColour = V_GetColor(color);
 			FRGBAFloat clearColour;
 			clearColour.red = (float)rgbaColour.s.red / 255;
 			clearColour.green = (float)rgbaColour.s.green / 255;
 			clearColour.blue = (float)rgbaColour.s.blue / 255;
 			clearColour.alpha = 1;
-			HWD.pfnClearBuffer(true, false, &clearColour);
+			GPU->ClearBuffer(true, false, &clearColour);
 			return;
 		}
 
-		fx *= vid.dup;
-		fy *= vid.dup;
-		fw *= vid.dup;
-		fh *= vid.dup;
+		fx *= dupx;
+		fy *= dupy;
+		fw *= dupx;
+		fh *= dupy;
 
-		if (fabsf((float)vid.width - (float)BASEVIDWIDTH * vid.dup) > 1.0E-36f)
+		if (fabsf((float)vid.width - (float)BASEVIDWIDTH * dupx) > 1.0E-36f)
 		{
 			if (color & V_SNAPTORIGHT)
-				fx += ((float)vid.width - ((float)BASEVIDWIDTH * vid.dup));
+				fx += ((float)vid.width - ((float)BASEVIDWIDTH * dupx));
 			else if (!(color & V_SNAPTOLEFT))
-				fx += ((float)vid.width - ((float)BASEVIDWIDTH * vid.dup)) / 2;
+				fx += ((float)vid.width - ((float)BASEVIDWIDTH * dupx)) / 2;
 			if (perplayershuffle & 4)
-				fx -= ((float)vid.width - ((float)BASEVIDWIDTH * vid.dup)) / 4;
+				fx -= ((float)vid.width - ((float)BASEVIDWIDTH * dupx)) / 4;
 			else if (perplayershuffle & 8)
-				fx += ((float)vid.width - ((float)BASEVIDWIDTH * vid.dup)) / 4;
+				fx += ((float)vid.width - ((float)BASEVIDWIDTH * dupx)) / 4;
 		}
-		if (fabsf((float)vid.height - (float)BASEVIDHEIGHT * vid.dup) > 1.0E-36f)
+		if (fabsf((float)vid.height - (float)BASEVIDHEIGHT * dupy) > 1.0E-36f)
 		{
 			// same thing here
 			if (color & V_SNAPTOBOTTOM)
-				fy += ((float)vid.height - ((float)BASEVIDHEIGHT * vid.dup));
+				fy += ((float)vid.height - ((float)BASEVIDHEIGHT * dupy));
 			else if (!(color & V_SNAPTOTOP))
-				fy += ((float)vid.height - ((float)BASEVIDHEIGHT * vid.dup)) / 2;
+				fy += ((float)vid.height - ((float)BASEVIDHEIGHT * dupy)) / 2;
 			if (perplayershuffle & 1)
-				fy -= ((float)vid.height - ((float)BASEVIDHEIGHT * vid.dup)) / 4;
+				fy -= ((float)vid.height - ((float)BASEVIDHEIGHT * dupy)) / 4;
 			else if (perplayershuffle & 2)
-				fy += ((float)vid.height - ((float)BASEVIDHEIGHT * vid.dup)) / 4;
+				fy += ((float)vid.height - ((float)BASEVIDHEIGHT * dupy)) / 4;
 		}
 	}
 
@@ -1306,18 +1497,10 @@ void HWR_DrawFill(INT32 x, INT32 y, INT32 w, INT32 h, INT32 color)
 	v[0].t = v[1].t = 0.0f;
 	v[2].t = v[3].t = 1.0f;
 
-	Surf.PolyColor = palette[color&0xFF];
+	Surf.PolyColor = V_GetColor(color);
 
-	if (alphalevel)
-	{
-		if (alphalevel == 10) Surf.PolyColor.s.alpha = softwaretranstogl_lo[st_translucency]; // V_HUDTRANSHALF
-		else if (alphalevel == 11) Surf.PolyColor.s.alpha = softwaretranstogl[st_translucency]; // V_HUDTRANS
-		else if (alphalevel == 12) Surf.PolyColor.s.alpha = softwaretranstogl_hi[st_translucency]; // V_HUDTRANSDOUBLE
-		else Surf.PolyColor.s.alpha = softwaretranstogl[10-alphalevel];
-	}
-
-	HWD.pfnDrawPolygon(&Surf, v, 4,
-		PF_Modulated|PF_NoTexture|PF_NoDepthTest|PF_Translucent);
+	GPU->DrawPolygon(&Surf, v, 4,
+		PF_Modulated|PF_NoTexture|PF_NoDepthTest);
 }
 
 #ifdef HAVE_PNG
@@ -1354,7 +1537,7 @@ static inline boolean saveTGA(const char *file_name, void *buffer,
 	INT32 i;
 	UINT8 *buf8 = buffer;
 
-	fd = open(file_name, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+	fd = open(file_name, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0666);
 	if (fd < 0)
 		return false;
 
@@ -1393,30 +1576,25 @@ static inline boolean saveTGA(const char *file_name, void *buffer,
 
 UINT8 *HWR_GetScreenshot(void)
 {
-	UINT8 *buf = malloc(vid.width * vid.height * 3 * sizeof (*buf));
-	int tex = HWR_ShouldUsePaletteRendering() ? HWD_SCREENTEXTURE_GENERIC3 : HWD_SCREENTEXTURE_GENERIC2;
-
+	UINT8 *buf = malloc(vid.width * vid.height * SCREENSHOT_BITS * sizeof (*buf));
 	if (!buf)
 		return NULL;
-	// returns 24bit 888 RGB
-	HWD.pfnReadScreenTexture(tex, (void *)buf);
+
+	// returns either 24bit 888 RGB or 32bit 8888 RGBA
+	GPU->ReadRect(0, 0, vid.width, vid.height, vid.width * SCREENSHOT_BITS, (void *)buf);
 	return buf;
 }
 
 boolean HWR_Screenshot(const char *pathname)
 {
 	boolean ret;
-	UINT8 *buf = malloc(vid.width * vid.height * 3 * sizeof (*buf));
-	int tex = HWR_ShouldUsePaletteRendering() ? HWD_SCREENTEXTURE_GENERIC3 : HWD_SCREENTEXTURE_GENERIC2;
+	UINT8 *buf = HWR_GetScreenshot();
 
 	if (!buf)
 	{
 		CONS_Debug(DBG_RENDER, "HWR_Screenshot: Failed to allocate memory\n");
 		return false;
 	}
-
-	// returns 24bit 888 RGB
-	HWD.pfnReadScreenTexture(tex, (void *)buf);
 
 #ifdef USE_PNG
 	ret = M_SavePNG(pathname, buf, vid.width, vid.height, NULL);

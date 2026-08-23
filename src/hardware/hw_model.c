@@ -10,14 +10,14 @@
 #include "../doomdef.h"
 #include "../doomtype.h"
 #include "../info.h"
-#include "../r_skins.h"
-#include "../r_state.h"
 #include "../z_zone.h"
 #include "hw_model.h"
 #include "hw_md2load.h"
 #include "hw_md3load.h"
 #include "hw_md2.h"
+#include "hw_drv.h"
 #include "../u_list.h"
+
 #include <string.h>
 
 static float PI = (3.1415926535897932384626433832795f);
@@ -56,6 +56,9 @@ void VectorRotate(vector_t *rotVec, const vector_t *axisVec, float angle)
 
 void UnloadModel(model_t *model)
 {
+	if (!model)
+		return;
+
 	// Wouldn't it be great if C just had destructors?
 	int i;
 	for (i = 0; i < model->numMeshes; i++)
@@ -106,6 +109,9 @@ void UnloadModel(model_t *model)
 		if (mesh->uvs)
 			Z_Free(mesh->uvs);
 
+		if (mesh->originaluvs != mesh->uvs)
+			Z_Free(mesh->originaluvs);
+
 		if (mesh->lightuvs)
 			Z_Free(mesh->lightuvs);
 	}
@@ -119,7 +125,9 @@ void UnloadModel(model_t *model)
 	if (model->materials)
 		Z_Free(model->materials);
 
-	DeleteVBOs(model);
+	if (GPU)
+		GPU->DeleteModelVBOs(model);
+
 	Z_Free(model);
 }
 
@@ -140,14 +148,26 @@ tag_t *GetTagByName(model_t *model, char *name, int frame)
 	return NULL;
 }
 
+enum
+{
+	MODEL_TYPE_MD3,
+	MODEL_TYPE_MD3S,
+	MODEL_TYPE_MD2,
+	MODEL_TYPE_MD2S
+};
+
 //
 // LoadModel
 //
-// Load a model and convert it to the internal format.
+// Load a model and
+// convert it to the
+// internal format.
 //
-model_t *LoadModel(const char *filename, int ztag)
+model_t *LoadModel(const char *filename, int ztag, wadfile_t *wadfile)
 {
 	model_t *model;
+	char *buffer = NULL;
+	int type;
 
 	// What type of file?
 	const char *extension = NULL;
@@ -169,29 +189,60 @@ model_t *LoadModel(const char *filename, int ztag)
 
 	if (!strcmp(extension, ".md3"))
 	{
-		if (!(model = MD3_LoadModel(filename, ztag, false)))
-			return NULL;
+		type = MODEL_TYPE_MD3;
 	}
 	else if (!strcmp(extension, ".md3s")) // MD3 that will be converted in memory to use full floats
 	{
-		if (!(model = MD3_LoadModel(filename, ztag, true)))
-			return NULL;
+		type = MODEL_TYPE_MD3S;
 	}
 	else if (!strcmp(extension, ".md2"))
 	{
-		if (!(model = MD2_LoadModel(filename, ztag, false)))
-			return NULL;
+		type = MODEL_TYPE_MD2;
 	}
 	else if (!strcmp(extension, ".md2s"))
 	{
-		if (!(model = MD2_LoadModel(filename, ztag, true)))
-			return NULL;
+		type = MODEL_TYPE_MD2S;
 	}
 	else
 	{
 		CONS_Printf("Unknown model format: %s\n", extension);
 		return NULL;
 	}
+
+	if (wadfile)
+	{
+		if (Resource_LumpExists(wadfile, filename))
+			buffer = Resource_CacheLumpName(wadfile, filename, PU_STATIC);
+	}
+	else
+	{
+		FILE *f = File_Open(filename, "rb", FILEHANDLE_SDL);
+		if (!f)
+			return NULL;
+
+		// find length of file
+		size_t fileLen = File_Size(f);
+
+		// read in file
+		buffer = ZZ_Alloc(fileLen);
+		File_Read(buffer, fileLen, 1, f);
+		File_Close(f);
+	}
+
+	if (type == MODEL_TYPE_MD3 || type == MODEL_TYPE_MD3S)
+	{
+		if (!(model = MD3_LoadModel(buffer, ztag, type == MODEL_TYPE_MD3S)))
+			return NULL;
+	}
+	else if (type == MODEL_TYPE_MD2 || type == MODEL_TYPE_MD2S)
+	{
+		if (!(model = MD2_LoadModel(buffer, ztag, type == MODEL_TYPE_MD2S)))
+			return NULL;
+	}
+	else
+		return NULL;
+
+	Z_Free(buffer);
 
 	Optimize(model);
 	GeneratePolygonNormals(model, ztag);
@@ -222,6 +273,7 @@ model_t *LoadModel(const char *filename, int ztag)
 	for (i = 0; i < model->numMeshes; i++)
 		model->meshes[i].originaluvs = model->meshes[i].uvs;
 
+	model->hasVBOs = false;
 	model->max_s = 1.0;
 	model->max_t = 1.0;
 	model->vbo_max_s = 1.0;
@@ -233,16 +285,15 @@ model_t *LoadModel(const char *filename, int ztag)
 void HWR_ReloadModels(void)
 {
 	size_t i;
+	INT32 s;
 
-	HWR_LoadModels();
-
-	for (i = 0; i < md2_numplayermodels; i++)
+	for (s = 0; s < MAXSKINS; s++)
 	{
-		if (md2_playermodels[i].model)
-			LoadModelSprite2(md2_playermodels[i].model);
+		if (md2_playermodels[s].model)
+			LoadModelSprite2(md2_playermodels[s].model);
 	}
 
-	for (i = 0; i < numsprites; i++)
+	for (i = 0; i < NUMSPRITES; i++)
 	{
 		if (md2_models[i].model)
 			LoadModelInterpolationSettings(md2_models[i].model);
@@ -253,7 +304,7 @@ void LoadModelInterpolationSettings(model_t *model)
 {
 	INT32 i;
 	INT32 numframes = model->meshes[0].numFrames;
-	char *framename = model->frameNames;
+	char *framename = model->framenames;
 
 	if (!framename)
 		return;
@@ -292,9 +343,8 @@ void LoadModelSprite2(model_t *model)
 {
 	INT32 i;
 	modelspr2frames_t *spr2frames = NULL;
-	modelspr2frames_t *superspr2frames = NULL;
 	INT32 numframes = model->meshes[0].numFrames;
-	char *framename = model->frameNames;
+	char *framename = model->framenames;
 
 	if (!framename)
 		return;
@@ -336,33 +386,25 @@ void LoadModelSprite2(model_t *model)
 				spr2idx = 0;
 				while (spr2idx < free_spr2)
 				{
-					modelspr2frames_t *frames = NULL;
 					if (!memcmp(spr2names[spr2idx], name, 4))
 					{
 						if (!spr2frames)
-							spr2frames = (modelspr2frames_t*)Z_Calloc(sizeof(modelspr2frames_t)*NUMPLAYERSPRITES, PU_STATIC, NULL);
-						frames = spr2frames;
-
+							spr2frames = (modelspr2frames_t*)Z_Calloc(sizeof(modelspr2frames_t)*NUMPLAYERSPRITES*2, PU_STATIC, NULL);
 						if (super)
-						{
-							if (!superspr2frames)
-								superspr2frames = (modelspr2frames_t*)Z_Calloc(sizeof(modelspr2frames_t)*NUMPLAYERSPRITES, PU_STATIC, NULL);
-							frames = superspr2frames;
-						}
-
+							spr2idx |= FF_SPR2SUPER;
 						if (framechars[0])
 						{
 							frame = atoi(framechars);
-							if (frames[spr2idx].numframes < frame+1)
-								frames[spr2idx].numframes = frame+1;
+							if (spr2frames[spr2idx].numframes < frame+1)
+								spr2frames[spr2idx].numframes = frame+1;
 						}
 						else
 						{
-							frame = frames[spr2idx].numframes;
-							frames[spr2idx].numframes++;
+							frame = spr2frames[spr2idx].numframes;
+							spr2frames[spr2idx].numframes++;
 						}
-						frames[spr2idx].frames[frame] = i;
-						frames[spr2idx].interpolate = interpolate;
+						spr2frames[spr2idx].frames[frame] = i;
+						spr2frames[spr2idx].interpolate = interpolate;
 						break;
 					}
 					spr2idx++;
@@ -375,10 +417,7 @@ void LoadModelSprite2(model_t *model)
 
 	if (model->spr2frames)
 		Z_Free(model->spr2frames);
-	if (model->superspr2frames)
-		Z_Free(model->superspr2frames);
 	model->spr2frames = spr2frames;
-	model->superspr2frames = superspr2frames;
 }
 
 //
@@ -682,78 +721,10 @@ void GeneratePolygonNormals(model_t *model, int ztag)
 
 			for (k = 0; k < mesh->numTriangles; k++)
 			{
-				/// TODO: normalize vectors
-				(void)vertices;
-				(void)polyNormals;
 //				Vector::Normal(vertices, polyNormals);
 				vertices += 3 * 3;
 				polyNormals++;
 			}
 		}
 	}
-}
-
-//
-// Reload
-//
-// Reload VBOs
-//
-#if 0
-static void Reload(void)
-{
-/*	model_t *node;
-	for (node = modelHead; node; node = node->next)
-	{
-		int i;
-		for (i = 0; i < node->numMeshes; i++)
-		{
-			mesh_t *mesh = &node->meshes[i];
-
-			if (mesh->frames)
-			{
-				int j;
-				for (j = 0; j < mesh->numFrames; j++)
-					CreateVBO(mesh, &mesh->frames[j]);
-			}
-			else if (mesh->tinyframes)
-			{
-				int j;
-				for (j = 0; j < mesh->numFrames; j++)
-					CreateVBO(mesh, &mesh->tinyframes[j]);
-			}
-		}
-	}*/
-}
-#endif
-
-void DeleteVBOs(model_t *model)
-{
-	(void)model;
-/*	for (int i = 0; i < model->numMeshes; i++)
-	{
-		mesh_t *mesh = &model->meshes[i];
-
-		if (mesh->frames)
-		{
-			for (int j = 0; j < mesh->numFrames; j++)
-			{
-				mdlframe_t *frame = &mesh->frames[j];
-				if (!frame->vboID)
-					continue;
-				bglDeleteBuffers(1, &frame->vboID);
-				frame->vboID = 0;
-			}
-		}
-		else if (mesh->tinyframes)
-		{
-			for (int j = 0; j < mesh->numFrames; j++)
-			{
-				tinyframe_t *frame = &mesh->tinyframes[j];
-				if (!frame->vboID)
-					continue;
-				bglDeleteBuffers(1, &frame->vboID);
-				frame->vboID = 0;
-			}
-		}
-	}*/
 }

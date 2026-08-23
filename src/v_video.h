@@ -174,6 +174,8 @@ void V_CubeApply(UINT8 *red, UINT8 *green, UINT8 *blue);
 void V_DrawStretchyFixedPatch(fixed_t x, fixed_t y, fixed_t pscale, fixed_t vscale, INT32 scrn, patch_t *patch, const UINT8 *colormap);
 void V_DrawCroppedPatch(fixed_t x, fixed_t y, fixed_t pscale, fixed_t vscale, INT32 scrn, patch_t *patch, const UINT8 *colormap, fixed_t sx, fixed_t sy, fixed_t w, fixed_t h);
 
+void V_GetPatchScreenRegion(fixed_t *x, fixed_t *y, fixed_t *w, fixed_t *h, fixed_t pscale, fixed_t vscale, INT32 scrn, patch_t *patch);
+
 void V_DrawContinueIcon(INT32 x, INT32 y, INT32 flags, INT32 skinnum, UINT16 skincolor);
 
 // Draw a linear block of pixels into the view buffer.
@@ -255,6 +257,12 @@ void V_DrawAlignedFontStringAtFixed(fixed_t x, fixed_t y, INT32 option, fixed_t 
 // draw a string using the level title font
 #define V_DrawLevelTitle(x,y,o,str) V_DrawFontString(x,y,o|V_ALLOWLOWERCASE,FRACUNIT,FRACUNIT,str,lt_font)
 
+// Draws a scaled string.
+void V_DrawScaledString(fixed_t x, fixed_t y, fixed_t scale, INT32 option, const char *string);
+
+// Draws a scaled thin string.
+void V_DrawScaledThinString(fixed_t x, fixed_t y, fixed_t scale, INT32 option, const char *string);
+
 // Draw tall nums, used for menu, HUD, intermission
 void V_DrawTallNum(INT32 x, INT32 y, INT32 flags, INT32 num);
 void V_DrawPaddedTallNum(INT32 x, INT32 y, INT32 flags, INT32 num, INT32 digits);
@@ -279,6 +287,8 @@ INT32 V_FontStringHeight(const char *string, INT32 option, fontdef_t font);
 #define V_LevelNameWidth(str) V_FontStringWidth(str,V_ALLOWLOWERCASE,lt_font)
 #define V_LevelNameHeight(str) V_FontStringHeight(str,0,lt_font)
 #define V_StringHeight(str,o) V_FontStringHeight(str,o,hu_font)
+
+
 
 void V_DoPostProcessor(INT32 view, postimg_t type, INT32 param);
 

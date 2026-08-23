@@ -201,6 +201,9 @@
     <ClInclude Include="..\hu_stuff.h">
       <Filter>H_Hud</Filter>
     </ClInclude>
+    <ClInclude Include="..\hu_font.h">
+      <Filter>H_Hud</Filter>
+    </ClInclude>
     <ClInclude Include="..\st_stuff.h">
       <Filter>H_Hud</Filter>
     </ClInclude>
@@ -709,6 +712,9 @@
     <ClCompile Include="..\hu_stuff.c">
       <Filter>H_Hud</Filter>
     </ClCompile>
+    <ClCompile Include="..\hu_font.c">
+      <Filter>H_Hud</Filter>
+    </ClCompile>
     <ClCompile Include="..\st_stuff.c">
       <Filter>H_Hud</Filter>
     </ClCompile>
@@ -842,6 +848,9 @@
       <Filter>M_Misc</Filter>
     </ClCompile>
     <ClCompile Include="..\m_perfstats.c">
+      <Filter>M_Misc</Filter>
+    </ClCompile>
+    <ClCompile Include="..\m_textreader.c">
       <Filter>M_Misc</Filter>
     </ClCompile>
     <ClCompile Include="..\m_queue.c">
@@ -1028,6 +1037,9 @@
       <Filter>W_Wad</Filter>
     </ClCompile>
     <ClCompile Include="..\w_wad.c">
+      <Filter>W_Wad</Filter>
+    </ClCompile>
+    <ClCompile Include="..\w_handle.c">
       <Filter>W_Wad</Filter>
     </ClCompile>
     <ClCompile Include="dosstr.c">

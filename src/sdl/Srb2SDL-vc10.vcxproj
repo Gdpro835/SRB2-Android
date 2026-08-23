@@ -320,6 +320,7 @@
     <ClInclude Include="..\hardware\hw_model.h" />
     <ClInclude Include="..\u_list.h" />
     <ClInclude Include="..\hu_stuff.h" />
+    <ClInclude Include="..\hu_font.h" />
     <ClInclude Include="..\info.h" />
     <ClInclude Include="..\i_joy.h" />
     <ClInclude Include="..\i_net.h" />
@@ -502,6 +503,7 @@
     <ClCompile Include="..\r_bbox.c" />
     <ClCompile Include="..\u_list.c" />
     <ClCompile Include="..\hu_stuff.c" />
+    <ClCompile Include="..\hu_font.c" />
     <ClCompile Include="..\info.c" />
     <ClCompile Include="..\i_time.c" />
     <ClCompile Include="..\lua_baselib.c" />
@@ -535,6 +537,7 @@
     <ClCompile Include="..\m_misc.c" />
     <ClCompile Include="..\m_tokenizer.c" />
     <ClCompile Include="..\m_perfstats.c" />
+    <ClCompile Include="..\m_textreader.c" />
     <ClCompile Include="..\m_queue.c" />
     <ClCompile Include="..\m_vector.c" />
     <ClCompile Include="..\m_random.c" />
@@ -617,6 +620,7 @@
     <ClCompile Include="..\v_video.c" />
     <ClCompile Include="..\win32\win_dbg.c" />
     <ClCompile Include="..\w_wad.c" />
+    <ClCompile Include="..\w_handle.c" />
     <ClCompile Include="..\y_inter.c" />
     <ClCompile Include="..\z_zone.c" />
     <ClCompile Include="dosstr.c" />

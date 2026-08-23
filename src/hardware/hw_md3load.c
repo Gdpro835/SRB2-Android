@@ -14,6 +14,7 @@
 #include "hw_md3load.h"
 #include "hw_model.h"
 #include "../z_zone.h"
+#include "../w_handle.h"
 
 typedef struct
 {
@@ -144,20 +145,16 @@ static void LatLngInit(void)
 
 static boolean latlnginit = false;
 
-model_t *MD3_LoadModel(const char *fileName, int ztag, boolean useFloat)
+model_t *MD3_LoadModel(char *buffer, int ztag, boolean useFloat)
 {
 	const float WUNITS = 1.0f;
 	model_t *retModel = NULL;
 	md3Frame *frames = NULL;
 	char *fname = NULL;
 	md3modelHeader *mdh;
-	long fileLen;
-	long fileReadLen;
-	char *buffer;
 	int surfEnd;
 	int i, t;
 	int matCount;
-	FILE *f;
 
 	if (!latlnginit)
 	{
@@ -165,24 +162,7 @@ model_t *MD3_LoadModel(const char *fileName, int ztag, boolean useFloat)
 		latlnginit = true;
 	}
 
-	f = fopen(fileName, "rb");
-
-	if (!f)
-		return NULL;
-
 	retModel = (model_t*)Z_Calloc(sizeof(model_t), ztag, 0);
-
-	// find length of file
-	fseek(f, 0, SEEK_END);
-	fileLen = ftell(f);
-	fseek(f, 0, SEEK_SET);
-
-	// read in file
-	buffer = malloc(fileLen);
-	fileReadLen = fread(buffer, fileLen, 1, f);
-	fclose(f);
-
-	(void)fileReadLen; // intentionally ignore return value, per buildbot
 
 	// get pointer to file header
 	mdh = (md3modelHeader*)buffer;
@@ -230,8 +210,8 @@ model_t *MD3_LoadModel(const char *fileName, int ztag, boolean useFloat)
 	retModel->meshes = (mesh_t*)Z_Calloc(sizeof(mesh_t)*retModel->numMeshes, ztag, 0);
 
 	frames = (md3Frame*)&buffer[mdh->offsetFrames];
-	retModel->frameNames = (char*)Z_Calloc(mdh->numFrames*16, ztag, 0);
-	fname = retModel->frameNames;
+	retModel->framenames = (char*)Z_Calloc(mdh->numFrames*16, ztag, 0);
+	fname = retModel->framenames;
 	for (i = 0; i < mdh->numFrames; i++)
 	{
 		memcpy(fname, frames->name, 16);
@@ -514,9 +494,6 @@ model_t *MD3_LoadModel(const char *fileName, int ztag, boolean useFloat)
 			curTag++;
 		}
 	}*/
-
-
-	free(buffer);
 
 	return retModel;
 }

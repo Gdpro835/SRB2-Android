@@ -58,7 +58,6 @@ PFNglGetString pglGetString;
 
 #define MAX_VIDEO_MODES   32
 static  vmode_t     video_modes[MAX_VIDEO_MODES];
-INT32     oglflags = 0;
 
 // **************************************************************************
 //                                                                  FUNCTIONS
@@ -117,7 +116,7 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, // handle to DLL module
 #define pwglDeleteContext wglDeleteContext;
 #define pwglMakeCurrent wglMakeCurrent;
 #else
-static HMODULE OGL32;
+static HMODULE OGL32, GLU32;
 typedef void *(WINAPI *PFNwglGetProcAddress) (const char *);
 static PFNwglGetProcAddress pwglGetProcAddress;
 typedef HGLRC (WINAPI *PFNwglCreateContext) (HDC hdc);
@@ -129,9 +128,16 @@ static PFNwglMakeCurrent pwglMakeCurrent;
 #endif
 
 #ifndef STATIC_OPENGL
-void *GetGLFunc(const char *proc)
+void *GLBackend_GetFunction(const char *proc)
 {
 	void *func = NULL;
+	if (strncmp(proc, "glu", 3) == 0)
+	{
+		if (GLU32)
+			func = GetProcAddress(GLU32, proc);
+		else
+			return NULL;
+	}
 	if (pwglGetProcAddress)
 		func = pwglGetProcAddress(proc);
 	if (!func)
@@ -140,7 +146,7 @@ void *GetGLFunc(const char *proc)
 }
 #endif
 
-boolean LoadGL(void)
+boolean GLBackend_Init(void)
 {
 #ifndef STATIC_OPENGL
 	OGL32 = LoadLibrary("OPENGL32.DLL");
@@ -148,12 +154,15 @@ boolean LoadGL(void)
 	if (!OGL32)
 		return 0;
 
-	pwglGetProcAddress = GetGLFunc("wglGetProcAddress");
-	pwglCreateContext = GetGLFunc("wglCreateContext");
-	pwglDeleteContext = GetGLFunc("wglDeleteContext");
-	pwglMakeCurrent = GetGLFunc("wglMakeCurrent");
+	GLU32 = LoadLibrary("GLU32.DLL");
+
+	pwglGetProcAddress = GLBackend_GetFunction("wglGetProcAddress");
+	pwglCreateContext = GLBackend_GetFunction("wglCreateContext");
+	pwglDeleteContext = GLBackend_GetFunction("wglDeleteContext");
+	pwglMakeCurrent = GLBackend_GetFunction("wglMakeCurrent");
 #endif
-	return SetupGLfunc();
+
+	return GLBackend_LoadFunctions();
 }
 
 // -----------------+
@@ -242,7 +251,7 @@ static INT32 WINAPI SetRes(viddef_t *lvid, vmode_t *pcurrentmode)
 
 	// BP : why flush texture ?
 	//      if important flush also the first one (white texture) and restore it !
-	Flush();    // Flush textures.
+	GLTexture_Flush();    // Flush textures.
 
 // TODO: if not fullscreen, skip display stuff and just resize viewport stuff ...
 
@@ -333,24 +342,19 @@ static INT32 WINAPI SetRes(viddef_t *lvid, vmode_t *pcurrentmode)
 	GL_DBG_Printf("Version    : %s\n", pglGetString(GL_VERSION));
 	GL_DBG_Printf("Extensions : %s\n", gl_extensions);
 
-	// BP: disable advenced feature that don't work on somes hardware
-	// Hurdler: Now works on G400 with bios 1.6 and certified drivers 6.04
-	if (strstr(renderer, "810"))   oglflags |= GLF_NOZBUFREAD;
-	GL_DBG_Printf("oglflags   : 0x%X\n", oglflags);
-
 #ifdef USE_WGL_SWAP
-	if (isExtAvailable("WGL_EXT_swap_control",gl_extensions))
-		wglSwapIntervalEXT = GetGLFunc("wglSwapIntervalEXT");
+	if (GL_ExtensionAvailable("WGL_EXT_swap_control",gl_extensions))
+		wglSwapIntervalEXT = GLBackend_GetFunction("wglSwapIntervalEXT");
 	else
 		wglSwapIntervalEXT = NULL;
 #endif
 
-	if (isExtAvailable("GL_EXT_texture_filter_anisotropic",gl_extensions))
+	if (GL_ExtensionAvailable("GL_EXT_texture_filter_anisotropic",gl_extensions))
 		pglGetIntegerv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &maximumAnisotropy);
 	else
 		maximumAnisotropy = 0;
 
-	SetupGLFunc13();
+	GLBackend_LoadExtraFunctions();
 
 	screen_depth = (GLbyte)(lvid->bpp*8);
 	if (screen_depth > 16)
@@ -508,7 +512,7 @@ EXPORT void HWRAPI(Shutdown) (void)
 					nb_frames, nb_centiemes/100.0f, (100*nb_frames)/(double)nb_centiemes);
 #endif
 
-	Flush();
+	GLTexture_Flush();
 
 	// Exit previous mode
 	if (hGLRC)
@@ -519,6 +523,7 @@ EXPORT void HWRAPI(Shutdown) (void)
 		ReleaseDC(hWnd, hDC);
 		hDC = NULL;
 	}
+	FreeLibrary(GLU32);
 	FreeLibrary(OGL32);
 	GL_DBG_Printf ("HWRAPI Shutdown(DONE)\n");
 }
@@ -561,7 +566,7 @@ EXPORT void HWRAPI(SetPalette) (RGBA_t *pal)
 	if (memcmp(&myPaletteData, pal, palsize))
 	{
 		memcpy(&myPaletteData, pal, palsize);
-		Flush();
+		GLTexture_Flush();
 	}
 }
 
