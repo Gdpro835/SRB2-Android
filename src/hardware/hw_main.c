@@ -3676,7 +3676,7 @@ static void HWR_DrawDropShadow(mobj_t *thing, fixed_t scale)
 	}
 
 	HWR_Lighting(&sSurf, 0, colormap);
-	sSurf.PolyColor.s.alpha = alpha;
+	sSurf.PolyColor.s.alpha = FixedMul(thing->alpha, alpha);
 
 	if (HWR_UseShader())
 	{
@@ -3851,10 +3851,15 @@ static void HWR_SplitSprite(gl_vissprite_t *spr)
 	// co-ordinates
 	memcpy(wallVerts, baseWallVerts, sizeof(baseWallVerts));
 
+	fixed_t newalpha = spr->mobj->alpha;
+
 	// if sprite has linkdraw, then dont write to z-buffer (by not using PF_Occlude)
 	// this will result in sprites drawn afterwards to be drawn on top like intended when using linkdraw.
 	if ((spr->mobj->flags2 & MF2_LINKDRAW) && spr->mobj->tracer)
+	{
+		newalpha = spr->mobj->tracer->alpha;
 		occlusion = 0;
+	}
 	else
 		occlusion = PF_Occlude;
 
@@ -3890,6 +3895,8 @@ static void HWR_SplitSprite(gl_vissprite_t *spr)
 		blend = HWR_GetBlendModeFlag(blendmode)|occlusion;
 		if (!occlusion) use_linkdraw_hack = true;
 	}
+
+	Surf.PolyColor.s.alpha = FixedMul(newalpha, Surf.PolyColor.s.alpha);
 
 	if (HWR_UseShader())
 	{
@@ -4343,10 +4350,15 @@ static void HWR_DrawSprite(gl_vissprite_t *spr)
 		FBITFIELD occlusion;
 		boolean use_linkdraw_hack = false;
 
+		fixed_t newalpha = spr->mobj->alpha;
+
 		// if sprite has linkdraw, then dont write to z-buffer (by not using PF_Occlude)
 		// this will result in sprites drawn afterwards to be drawn on top like intended when using linkdraw.
 		if ((spr->mobj->flags2 & MF2_LINKDRAW) && spr->mobj->tracer)
+		{
+			newalpha = spr->mobj->tracer->alpha;
 			occlusion = 0;
+		}
 		else
 			occlusion = PF_Occlude;
 
@@ -4382,6 +4394,8 @@ static void HWR_DrawSprite(gl_vissprite_t *spr)
 			blend = HWR_GetBlendModeFlag(blendmode)|occlusion;
 			if (!occlusion) use_linkdraw_hack = true;
 		}
+
+		Surf.PolyColor.s.alpha = FixedMul(newalpha, Surf.PolyColor.s.alpha);
 
 		if (spr->renderflags & RF_SHADOWEFFECTS)
 		{

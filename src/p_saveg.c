@@ -171,11 +171,12 @@ static void P_NetArchivePlayers(void)
 		WRITEUINT8(save_p, players[i].panim);
 		WRITEUINT8(save_p, players[i].stronganim);
 		WRITEUINT8(save_p, players[i].spectator);
+		WRITEUINT8(save_p, players[i].muted);
 
 		WRITEUINT16(save_p, players[i].flashpal);
 		WRITEUINT16(save_p, players[i].flashcount);
 
-		WRITEUINT8(save_p, players[i].skincolor);
+		WRITEUINT16(save_p, players[i].skincolor);
 		WRITEINT32(save_p, players[i].skin);
 		WRITEUINT32(save_p, players[i].availabilities);
 		WRITEUINT32(save_p, players[i].score);
@@ -261,6 +262,7 @@ static void P_NetArchivePlayers(void)
 		WRITEUINT8(save_p, players[i].marelap);
 		WRITEUINT8(save_p, players[i].marebonuslap);
 		WRITEUINT32(save_p, players[i].marebegunat);
+		WRITEUINT32(save_p, players[i].lastmaretime);
 		WRITEUINT32(save_p, players[i].startedtime);
 		WRITEUINT32(save_p, players[i].finishedtime);
 		WRITEUINT32(save_p, players[i].lapbegunat);
@@ -400,11 +402,12 @@ static void P_NetUnArchivePlayers(void)
 		players[i].panim = READUINT8(save_p);
 		players[i].stronganim = READUINT8(save_p);
 		players[i].spectator = READUINT8(save_p);
+		players[i].muted = READUINT8(save_p);
 
 		players[i].flashpal = READUINT16(save_p);
 		players[i].flashcount = READUINT16(save_p);
 
-		players[i].skincolor = READUINT8(save_p);
+		players[i].skincolor = READUINT16(save_p);
 		players[i].skin = READINT32(save_p);
 		players[i].availabilities = READUINT32(save_p);
 		players[i].score = READUINT32(save_p);
@@ -491,6 +494,7 @@ static void P_NetUnArchivePlayers(void)
 		players[i].marelap = READUINT8(save_p);
 		players[i].marebonuslap = READUINT8(save_p);
 		players[i].marebegunat = READUINT32(save_p);
+		players[i].lastmaretime = READUINT32(save_p);
 		players[i].startedtime = READUINT32(save_p);
 		players[i].finishedtime = READUINT32(save_p);
 		players[i].lapbegunat = READUINT32(save_p);
@@ -1578,7 +1582,9 @@ typedef enum
 	MD2_FLOORSPRITESLOPE    = 1<<22,
 	MD2_DISPOFFSET          = 1<<23,
 	MD2_DRAWONLYFORPLAYER   = 1<<24,
-	MD2_DONTDRAWFORVIEWMOBJ = 1<<25
+	MD2_DONTDRAWFORVIEWMOBJ = 1<<25,
+	MD2_TRANSLATION         = 1<<26,
+	MD2_ALPHA               = 1<<27
 } mobj_diff2_t;
 
 typedef enum
@@ -1819,6 +1825,10 @@ static void SaveMobjThinker(const thinker_t *th, const UINT8 type)
 		diff2 |= MD2_DONTDRAWFORVIEWMOBJ;
 	if (mobj->dispoffset != mobj->info->dispoffset)
 		diff2 |= MD2_DISPOFFSET;
+	if (mobj->translation)
+		diff2 |= MD2_TRANSLATION;
+	if (mobj->alpha != FRACUNIT)
+		diff2 |= MD2_ALPHA;
 
 	if (diff2 != 0)
 		diff |= MD_MORE;
@@ -2000,6 +2010,10 @@ static void SaveMobjThinker(const thinker_t *th, const UINT8 type)
 		WRITEUINT32(save_p, mobj->dontdrawforviewmobj->mobjnum);
 	if (diff2 & MD2_DISPOFFSET)
 		WRITEINT32(save_p, mobj->dispoffset);
+	if (diff2 & MD2_TRANSLATION)
+		WRITEUINT16(save_p, mobj->translation);
+	if (diff2 & MD2_ALPHA)
+		WRITEFIXED(save_p, mobj->alpha);
 
 	WRITEUINT32(save_p, mobj->mobjnum);
 }
@@ -3062,6 +3076,14 @@ static thinker_t* LoadMobjThinker(actionf_p1 thinker)
 		mobj->dispoffset = READINT32(save_p);
 	else
 		mobj->dispoffset = mobj->info->dispoffset;
+	if (diff2 & MD2_TRANSLATION)
+		mobj->translation = READUINT16(save_p);
+	else
+		mobj->translation = 0;
+	if (diff2 & MD2_ALPHA)
+		mobj->alpha = READFIXED(save_p);
+	else
+		mobj->alpha = FRACUNIT;
 
 	if (diff & MD_REDFLAG)
 	{

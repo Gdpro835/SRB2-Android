@@ -569,6 +569,7 @@ typedef struct player_s
 	tic_t marebegunat; // Leveltime when mare begun
 	tic_t startedtime; // Time which you started this mare with.
 	tic_t finishedtime; // Time it took you to finish the mare (used for display)
+	tic_t lastmaretime; // The time it took to complete the last mare (used for rank display)
 	tic_t lapbegunat; // Leveltime when lap begun
 	tic_t lapstartedtime; // Time which you started this lap with.
 	INT16 finishedspheres; // The spheres you had left upon finishing the mare
@@ -599,6 +600,7 @@ typedef struct player_s
 	boolean spectator;
 	boolean outofcoop;
 	boolean removing;
+	boolean muted;
 	UINT8 bot;
 	struct player_s *botleader;
 	UINT16 lastbuttons;

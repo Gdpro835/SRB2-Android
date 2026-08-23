@@ -92,7 +92,6 @@ typedef enum
 	PT_TEXTCMD,       // Extra text commands from the client.
 	PT_TEXTCMD2,      // Splitscreen text commands.
 	PT_CLIENTJOIN,    // Client wants to join; used in start game.
-	PT_NODETIMEOUT,   // Packet sent to self if the connection times out.
 
 	PT_LOGIN,         // Login attempt from the client.
 
@@ -411,6 +410,8 @@ void RegisterNetXCmd(netxcmd_t id, void (*cmd_f)(UINT8 **p, INT32 playernum));
 void SendNetXCmd(netxcmd_t id, const void *param, size_t nparam);
 void SendNetXCmd2(netxcmd_t id, const void *param, size_t nparam); // splitsreen player
 void SendKick(UINT8 playernum, UINT8 msg);
+void SendKicksForNode(SINT8 node, UINT8 msg);
+void CL_HandleTimeout(void);
 
 // Create any new ticcmds and broadcast to other players.
 void NetUpdate(void);

@@ -67,6 +67,7 @@ enum mobj_e {
 	mobj_skin,
 	mobj_color,
 	mobj_blendmode,
+	mobj_alpha,
 	mobj_bnext,
 	mobj_bprev,
 	mobj_hnext,
@@ -147,6 +148,7 @@ static const char *const mobj_opt[] = {
 	"skin",
 	"color",
 	"blendmode",
+	"alpha",
 	"bnext",
 	"bprev",
 	"hnext",
@@ -340,6 +342,9 @@ static int mobj_get(lua_State *L)
 		break;
 	case mobj_blendmode:
 		lua_pushinteger(L, mo->blendmode);
+		break;
+	case mobj_alpha:
+		lua_pushfixed(L, mo->alpha);
 		break;
 	case mobj_bnext:
 		LUA_PushUserdata(L, mo->bnext, META_MOBJ);
@@ -704,6 +709,16 @@ static int mobj_set(lua_State *L)
 		if (blendmode < 0 || blendmode > AST_OVERLAY)
 			return luaL_error(L, "mobj.blendmode %d out of range (0 - %d).", blendmode, AST_OVERLAY);
 		mo->blendmode = blendmode;
+		break;
+	}
+	case mobj_alpha:
+	{
+		fixed_t alpha = luaL_checkfixed(L, 3);
+		if (alpha < 0)
+			alpha = 0;
+		else if (alpha > FRACUNIT)
+			alpha = FRACUNIT;
+		mo->alpha = alpha;
 		break;
 	}
 	case mobj_bnext:

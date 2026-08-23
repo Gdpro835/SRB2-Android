@@ -469,6 +469,19 @@ void SendKick(UINT8 playernum, UINT8 msg)
 	SendNetXCmd(XD_KICK, &buf, 2);
 }
 
+void SendKicksForNode(SINT8 node, UINT8 msg)
+{
+	if (!nodeingame[node])
+		return;
+
+	if (nodetoplayer[node] != -1 && playeringame[(UINT8)nodetoplayer[node]])
+		SendKick((UINT8)nodetoplayer[node], msg);
+
+	if (nodetoplayer2[node] != -1 && nodetoplayer2[node] >= 0
+		&& playeringame[(UINT8)nodetoplayer2[node]])
+		SendKick((UINT8)nodetoplayer2[node], msg);
+}
+
 // -----------------------------------------------------------------
 // end of extra data function
 // -----------------------------------------------------------------
@@ -4411,14 +4424,10 @@ static void HandleShutdown(SINT8 node)
 	M_ShowESCMessage("Server has shutdown\n\n");
 }
 
-/** Called when a PT_NODETIMEOUT packet is received
-  *
-  * \param node The packet sender (should be the server)
-  *
+/** Called by the network code when the connection to the server times out.
   */
-static void HandleTimeout(SINT8 node)
+void CL_HandleTimeout(void)
 {
-	(void)node;
 	LUA_HookBool(false, HOOK(GameQuit));
 	D_QuitNetGame();
 	CL_Reset();
@@ -4682,7 +4691,6 @@ static void HandlePacketFromAwayNode(SINT8 node)
 				Net_CloseConnection(node); // nope
 			break;
 
-		case PT_NODETIMEOUT:
 		case PT_CLIENTQUIT:
 			if (server)
 				Net_CloseConnection(node);
@@ -4953,7 +4961,6 @@ static void HandlePacketFromPlayer(SINT8 node)
 				CONS_Printf(M_GetText("Password from %s failed.\n"), player_names[netconsole]);
 #endif
 			break;
-		case PT_NODETIMEOUT:
 		case PT_CLIENTQUIT:
 			if (client)
 				break;
@@ -4963,23 +4970,9 @@ static void HandlePacketFromPlayer(SINT8 node)
 			nodewaiting[node] = 0;
 			if (netconsole != -1 && playeringame[netconsole])
 			{
-				UINT8 kickmsg;
-
-				if (netbuffer->packettype == PT_NODETIMEOUT)
-					kickmsg = KICK_MSG_TIMEOUT;
-				else
-					kickmsg = KICK_MSG_PLAYER_QUIT;
-				kickmsg |= KICK_MSG_KEEP_BODY;
-
-				SendKick(netconsole, kickmsg);
+				SendKicksForNode(node, KICK_MSG_PLAYER_QUIT | KICK_MSG_KEEP_BODY);
 				nodetoplayer[node] = -1;
-
-				if (nodetoplayer2[node] != -1 && nodetoplayer2[node] >= 0
-					&& playeringame[(UINT8)nodetoplayer2[node]])
-				{
-					SendKick(nodetoplayer2[node], kickmsg);
-					nodetoplayer2[node] = -1;
-				}
+				nodetoplayer2[node] = -1;
 			}
 			Net_CloseConnection(node);
 			nodeingame[node] = false;
@@ -5143,11 +5136,6 @@ static void GetPackets(void)
 			if (netbuffer->packettype == PT_SERVERSHUTDOWN)
 			{
 				HandleShutdown(node);
-				continue;
-			}
-			if (netbuffer->packettype == PT_NODETIMEOUT)
-			{
-				HandleTimeout(node);
 				continue;
 			}
 		}

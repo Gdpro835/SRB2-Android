@@ -300,6 +300,8 @@ typedef struct mobj_s
 
 	UINT32 renderflags; // render flags
 	INT32 blendmode; // blend mode
+	UINT16 translation; // colormap translation id (see r_translation in 2.2.15)
+	fixed_t alpha; // alpha
 	fixed_t spritexscale, spriteyscale;
 	fixed_t spritexoffset, spriteyoffset;
 	fixed_t old_spritexscale, old_spriteyscale;
@@ -439,6 +441,8 @@ typedef struct precipmobj_s
 
 	UINT32 renderflags; // render flags
 	INT32 blendmode; // blend mode
+	UINT16 translation; // colormap translation id (see r_translation in 2.2.15)
+	fixed_t alpha; // alpha
 	fixed_t spritexscale, spriteyscale;
 	fixed_t spritexoffset, spriteyoffset;
 	fixed_t old_spritexscale, old_spriteyscale;

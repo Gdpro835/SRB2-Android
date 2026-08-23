@@ -506,6 +506,12 @@ void P_PlayerEmeraldBurst(player_t *player, boolean toss);
 
 void P_TouchSpecialThing(mobj_t *special, mobj_t *toucher, boolean heightcheck);
 boolean P_CheckSkyHit(mobj_t *mo, line_t *line);
+boolean P_LineIsBlocking(mobj_t *mo, line_t *li);
+INT32 P_GetSectorLightNumAt(sector_t *sector, fixed_t x, fixed_t y, fixed_t z);
+INT32 P_GetLightLevelFromSectorAt(sector_t *sector, fixed_t x, fixed_t y, fixed_t z);
+INT32 P_GetSectorLightLevelAt(fixed_t x, fixed_t y, fixed_t z);
+extracolormap_t *P_GetColormapFromSectorAt(sector_t *sector, fixed_t x, fixed_t y, fixed_t z);
+extracolormap_t *P_GetSectorColormapAt(fixed_t x, fixed_t y, fixed_t z);
 void P_TouchStarPost(mobj_t *starpost, player_t *player, boolean snaptopost);
 void P_PlayerFlagBurst(player_t *player, boolean toss);
 void P_CheckTimeLimit(void);

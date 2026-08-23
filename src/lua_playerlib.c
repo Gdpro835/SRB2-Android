@@ -192,6 +192,7 @@ enum player_e
 	player_marebegunat,
 	player_startedtime,
 	player_finishedtime,
+	player_lastmaretime,
 	player_lapbegunat,
 	player_lapstartedtime,
 	player_finishedspheres,
@@ -340,6 +341,7 @@ static const char *const player_opt[] = {
 	"marebegunat",
 	"startedtime",
 	"finishedtime",
+	"lastmaretime",
 	"lapbegunat",
 	"lapstartedtime",
 	"finishedspheres",
@@ -732,6 +734,9 @@ static int player_get(lua_State *L)
 		break;
 	case player_finishedtime:
 		lua_pushinteger(L, plr->finishedtime);
+		break;
+	case player_lastmaretime:
+		lua_pushinteger(L, plr->lastmaretime);
 		break;
 	case player_lapbegunat:
 		lua_pushinteger(L, plr->lapbegunat);
@@ -1225,6 +1230,9 @@ static int player_set(lua_State *L)
 		break;
 	case player_finishedtime:
 		plr->finishedtime = (tic_t)luaL_checkinteger(L, 3);
+		break;
+	case player_lastmaretime:
+		plr->lastmaretime = (tic_t)luaL_checkinteger(L, 3);
 		break;
 	case player_lapbegunat:
 		plr->lapbegunat = (tic_t)luaL_checkinteger(L, 3);

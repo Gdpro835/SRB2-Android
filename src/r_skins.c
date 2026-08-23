@@ -119,6 +119,7 @@ static void Sk_SetDefaultValue(skin_t *skin)
 	skin->prefcolor = SKINCOLOR_GREEN;
 	skin->supercolor = SKINCOLOR_SUPERGOLD1;
 	skin->prefoppositecolor = 0; // use tables
+	skin->natkcolor = SKINCOLOR_NONE;
 
 	skin->normalspeed = 36<<FRACBITS;
 	skin->runspeed = 28<<FRACBITS;
@@ -587,6 +588,9 @@ static boolean R_ProcessPatchableFields(skin_t *skin, char *stoken, char *value)
 	GETSKINCOLOR(prefcolor)
 	GETSKINCOLOR(prefoppositecolor)
 #undef GETSKINCOLOR
+
+	else if (!stricmp(stoken, "natkcolor"))
+		skin->natkcolor = R_GetColorByName(value); // SKINCOLOR_NONE is allowed here
 	else if (!stricmp(stoken, "supercolor"))
 	{
 		UINT16 color = R_GetSuperColorByName(value);

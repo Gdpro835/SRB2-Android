@@ -883,7 +883,8 @@ void P_NightserizePlayer(player_t *player, INT32 nighttime)
 			}
 
 			// Add score to leaderboards now
-			G_AddTempNightsRecords(player, players[i].marescore, leveltime - player->marebegunat, players[i].mare + 1);
+			player->lastmaretime = leveltime - player->marebegunat;
+			G_AddTempNightsRecords(player, players[i].marescore, player->lastmaretime, players[i].mare + 1);
 
 			// transfer scores anyway
 			players[i].totalmarescore += players[i].marescore;
@@ -909,7 +910,8 @@ void P_NightserizePlayer(player_t *player, INT32 nighttime)
 		player->finishedrings = (INT16)(player->rings);
 
 		// Add score to temp leaderboards
-		G_AddTempNightsRecords(player, player->marescore, leveltime - player->marebegunat, (UINT8)(oldmare + 1));
+		player->lastmaretime = leveltime - player->marebegunat;
+		G_AddTempNightsRecords(player, player->marescore, player->lastmaretime, (UINT8)(oldmare + 1));
 
 		// Starting a new mare, transfer scores
 		player->totalmarescore += player->marescore;
