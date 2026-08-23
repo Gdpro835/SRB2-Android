@@ -21,6 +21,7 @@
 #include "p_local.h"
 #include "p_setup.h"
 #include "p_saveg.h"
+#include "hu_stuff.h" // spam_tokens, spam_tics
 #include "r_data.h"
 #include "r_fps.h"
 #include "r_textures.h"
@@ -48,6 +49,7 @@ UINT8 *save_p;
 #define ARCHIVEBLOCK_THINKERS 0x7F37037C
 #define ARCHIVEBLOCK_SPECIALS 0x7F228378
 #define ARCHIVEBLOCK_EMBLEMS  0x7F4A5445
+#define ARCHIVEBLOCK_SECPORTALS 0x7FBE34C9
 
 // Note: This cannot be bigger
 // than an UINT16
@@ -817,6 +819,52 @@ static void P_NetArchiveWaypoints(void)
 	}
 }
 
+/* Sector portals are a 2.2.15 feature this port does not implement, but the
+   block is always present in the packet, so we have to write an empty one and
+   read past whatever a real 2.2.15 server sends us. */
+static void P_NetArchiveSectorPortals(void)
+{
+	WRITEUINT32(save_p, ARCHIVEBLOCK_SECPORTALS);
+	WRITEUINT32(save_p, 0); // we never have any
+}
+
+static void P_NetUnArchiveSectorPortals(void)
+{
+	UINT32 count, i;
+
+	if (READUINT32(save_p) != ARCHIVEBLOCK_SECPORTALS)
+		I_Error("Bad $$$.sav at archive block Secportals");
+
+	count = READUINT32(save_p);
+
+	for (i = 0; i < count; i++)
+	{
+		UINT8 type = READUINT8(save_p);
+
+		(void)READUINT8(save_p); // ceiling
+		(void)READUINT32(save_p); // target sector
+
+		switch (type)
+		{
+			case 0: // SECPORTAL_LINE
+				(void)READUINT32(save_p); // start line
+				(void)READUINT32(save_p); // dest line
+				break;
+			case 1: // SECPORTAL_PLANE
+			case 2: // SECPORTAL_HORIZON
+			case 3: // SECPORTAL_FLOOR
+			case 4: // SECPORTAL_CEILING
+				(void)READUINT32(save_p); // sector
+				break;
+			case 5: // SECPORTAL_OBJECT
+				(void)READUINT32(save_p); // mobj
+				break;
+			default:
+				break;
+		}
+	}
+}
+
 static void P_NetUnArchiveWaypoints(void)
 {
 	INT32 i, j;
@@ -878,7 +926,8 @@ static void P_NetUnArchiveWaypoints(void)
 
 // diff5 flags
 #define SD_GRAVITY     0x01
-// 0x02 is SD_FLOORPORTAL and 0x04 is SD_CEILPORTAL in 2.2.15 (sector portals are not ported yet)
+#define SD_FLOORPORTAL 0x02 // sector portals are not implemented, the fields are only skipped over
+#define SD_CEILPORTAL  0x04
 
 // sidedef flags
 enum
@@ -923,7 +972,7 @@ enum
 
 // diff2 flags
 #define LD_EXECUTORDELAY 0x01
-// 0x02 is LD_TRANSFPORTAL in 2.2.15 (sector portals are not ported yet)
+#define LD_TRANSFPORTAL  0x02 // sector portals are not implemented, the field is only skipped over
 
 static boolean P_AreArgsEqual(const line_t *li, const line_t *spawnli)
 {
@@ -1129,7 +1178,7 @@ static void ArchiveSectors(void)
 
 		if (diff)
 		{
-			WRITEUINT16(save_p, i);
+			WRITEUINT32(save_p, i);
 			WRITEUINT8(save_p, diff);
 			if (diff & SD_DIFF2)
 				WRITEUINT8(save_p, diff2);
@@ -1210,18 +1259,19 @@ static void ArchiveSectors(void)
 		}
 	}
 
-	WRITEUINT16(save_p, 0xffff);
+	WRITEUINT32(save_p, 0xffffffff);
 }
 
 static void UnArchiveSectors(void)
 {
-	UINT16 i, j;
+	UINT32 i;
+	UINT16 j;
 	UINT8 diff, diff2, diff3, diff4, diff5;
 	for (;;)
 	{
-		i = READUINT16(save_p);
+		i = READUINT32(save_p);
 
-		if (i == 0xffff)
+		if (i == 0xffffffff)
 			break;
 
 		if (i > numsectors)
@@ -1338,6 +1388,13 @@ static void UnArchiveSectors(void)
 			sectors[i].ceilingyscale = READFIXED(save_p);
 		if (diff5 & SD_GRAVITY)
 			sectors[i].gravity = READFIXED(save_p);
+
+		/* Sector portals are not implemented here, but their indices are part
+		   of the format, so read past them instead of losing our place. */
+		if (diff5 & SD_FLOORPORTAL)
+			(void)READUINT32(save_p);
+		if (diff5 & SD_CEILPORTAL)
+			(void)READUINT32(save_p);
 
 		if (diff & SD_FFLOORS)
 			UnArchiveFFloors(&sectors[i]);
@@ -1469,6 +1526,25 @@ static void UnArchiveSide(side_t *si)
 		si->scaley_bottom = READFIXED(save_p);
 	if (diff & LD_SDREPEATCNT)
 		si->repeatcnt = READINT16(save_p);
+
+	/* Per-wall lighting is not implemented here either. Same deal: the fields
+	   have to be consumed so the rest of the block stays aligned. */
+	if (diff & LD_SDLIGHT)
+		(void)READINT16(save_p);
+	if (diff & LD_SDTOPLIGHT)
+		(void)READINT16(save_p);
+	if (diff & LD_SDMIDLIGHT)
+		(void)READINT16(save_p);
+	if (diff & LD_SDBOTLIGHT)
+		(void)READINT16(save_p);
+	if (diff & LD_SDLIGHTABS)
+		(void)READUINT8(save_p);
+	if (diff & LD_SDTOPLIGHTABS)
+		(void)READUINT8(save_p);
+	if (diff & LD_SDMIDLIGHTABS)
+		(void)READUINT8(save_p);
+	if (diff & LD_SDBOTLIGHTABS)
+		(void)READUINT8(save_p);
 }
 
 static void ArchiveLines(void)
@@ -1627,6 +1703,10 @@ static void UnArchiveLines(void)
 			UnArchiveSide(&sides[li->sidenum[1]]);
 		if (diff2 & LD_EXECUTORDELAY)
 			li->executordelay = READINT32(save_p);
+
+		/* Sector portals are not implemented, only skipped over. */
+		if (diff2 & LD_TRANSFPORTAL)
+			(void)READUINT32(save_p);
 	}
 }
 
@@ -4545,6 +4625,12 @@ static void P_NetArchiveMisc(boolean resending)
 		WRITEUINT8(save_p, 0x2f);
 	else
 		WRITEUINT8(save_p, 0x2e);
+
+	for (i = 0; i < MAXPLAYERS; i++)
+	{
+		WRITEUINT8(save_p, spam_tokens[i]);
+		WRITEUINT32(save_p, spam_tics[i]);
+	}
 }
 
 static inline boolean P_NetUnArchiveMisc(boolean reloading)
@@ -4641,6 +4727,12 @@ static inline boolean P_NetUnArchiveMisc(boolean reloading)
 	// Is it paused?
 	if (READUINT8(save_p) == 0x2f)
 		paused = true;
+
+	for (i = 0; i < MAXPLAYERS; i++)
+	{
+		spam_tokens[i] = READUINT8(save_p);
+		spam_tics[i] = READUINT32(save_p);
+	}
 
 	return true;
 }
@@ -4992,6 +5084,7 @@ void P_SaveNetGame(boolean resending)
 		P_NetArchiveSpecials();
 		P_NetArchiveColormaps();
 		P_NetArchiveWaypoints();
+		P_NetArchiveSectorPortals();
 	}
 	LUA_Archive();
 
@@ -5032,6 +5125,7 @@ boolean P_LoadNetGame(boolean reloading)
 		P_NetUnArchiveSpecials();
 		P_NetUnArchiveColormaps();
 		P_NetUnArchiveWaypoints();
+		P_NetUnArchiveSectorPortals();
 		P_RelinkPointers();
 		P_FinishMobjs();
 	}
