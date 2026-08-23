@@ -1441,4 +1441,14 @@ boolean I_InitTcpNetwork(void)
 	return ret;
 }
 
+boolean Net_IsNodeIPv6(INT32 node)
+{
+#if defined (NONET) || !defined (HAVE_IPV6)
+	(void)node;
+	return false;
+#else
+	return clientaddress[node].any.sa_family == AF_INET6;
+#endif
+}
+
 #include "i_addrinfo.c"

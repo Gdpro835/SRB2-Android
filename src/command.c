@@ -1378,8 +1378,8 @@ void CV_RegisterVar(consvar_t *variable)
 #ifdef PARANOIA
 	if ((variable->flags & CV_NOINIT) && !(variable->flags & CV_CALL))
 		I_Error("variable %s has CV_NOINIT without CV_CALL\n", variable->name);
-	if ((variable->flags & CV_CALL) && !variable->func)
-		I_Error("variable %s has CV_CALL without a function\n", variable->name);
+	if ((variable->flags & CV_CALL) && !(variable->func || variable->can_change))
+		I_Error("variable %s has CV_CALL without any callbacks\n", variable->name);
 #endif
 
 	if (variable->flags & CV_NOINIT)
@@ -1444,6 +1444,36 @@ static void Setvalue(consvar_t *var, const char *valstr, boolean stealth)
 {
 	boolean override = false;
 	INT32 overrideval = 0;
+
+	// raise 'can change' code
+	LUA_CVarChanged(var); // let consolelib know what cvar this is.
+	if (var->flags & CV_CALL && var->can_change && !stealth)
+	{
+		if (!var->can_change(valstr))
+		{
+			// The callback refused the default value on register. How naughty...
+			// So we just use some fallback value.
+			if (var->string == NULL)
+			{
+				if (var->PossibleValue)
+				{
+					// Use PossibleValue
+					valstr = var->PossibleValue[0].strvalue;
+				}
+				else
+				{
+					// Else, use an empty string
+					valstr = "";
+				}
+			}
+			else
+			{
+				// Callback returned false, and the game is not registering this variable,
+				// so we can return safely.
+				return;
+			}
+		}
+	}
 
 	// If we want messages informing us if cheats have been enabled or disabled,
 	// we need to rework the consvars a little bit.  This call crashes the game
@@ -1634,8 +1664,7 @@ finish:
 	}
 	var->flags |= CV_MODIFIED;
 	// raise 'on change' code
-	LUA_CVarChanged(var); // let consolelib know what cvar this is.
-	if (var->flags & CV_CALL && !stealth)
+	if (var->flags & CV_CALL && var->func && !stealth)
 		var->func();
 
 	return;
@@ -1923,7 +1952,7 @@ static void CV_SetCVar(consvar_t *var, const char *value, boolean stealth)
 	if (!var->string)
 		I_Error("CV_Set: %s no string set!\n", var->name);
 #endif
-	if (!var || !var->string || !value || !stricmp(var->string, value))
+	if (!var || !var->string || !value || (var->can_change == NULL && !stricmp(var->string, value)))
 		return; // no changes
 
 	if (var->flags & CV_NETVAR)

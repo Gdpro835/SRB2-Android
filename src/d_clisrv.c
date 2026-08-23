@@ -3907,7 +3907,7 @@ void D_QuitNetGame(void)
 			if (nodeingame[i])
 				HSendPacket(i, true, 0, 0);
 #ifdef MASTERSERVER
-		if (serverrunning && ms_RoomId > 0)
+		if (serverrunning && cv_masterserver_room_id.value > 0)
 			UnregisterServer();
 #endif
 	}
@@ -4173,7 +4173,7 @@ boolean SV_SpawnServer(void)
 		{
 			I_NetOpenSocket();
 #ifdef MASTERSERVER
-			if (ms_RoomId > 0)
+			if (cv_masterserver_room_id.value > 0)
 				RegisterServer();
 #endif
 		}

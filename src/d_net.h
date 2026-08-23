@@ -59,6 +59,7 @@ boolean D_CheckNetGame(void);
 void D_CloseConnection(void);
 void Net_UnAcknowledgePacket(INT32 node);
 void Net_CloseConnection(INT32 node);
+boolean Net_IsNodeIPv6(INT32 node);
 void Net_ConnectionTimeout(INT32 node);
 void Net_AbortPacketType(UINT8 packettype);
 void Net_SendAcks(INT32 node);
