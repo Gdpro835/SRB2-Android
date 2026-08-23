@@ -141,84 +141,106 @@ HMS_on_read (char *s, size_t _1, size_t n, void *userdata)
 }
 
 #if defined(__ANDROID__)
-static char *hms_ca_bundle;
-static char *hms_cert_path;
+/*
+The Android build has no system-wide CA bundle that libcurl can read, so we
+ship one inside the APK and unpack it next to the game data. This used to be
+done from inside HMS_connect, which runs on the master server worker threads:
+va() and Z_StrDup() are not thread safe, and the bundle was re-read, MD5'd and
+rewritten on *every* request. Now it happens exactly once, under a mutex, and
+we fall back to the system certificate directory if anything goes wrong.
+*/
 
-static void
-HMS_get_cert (void)
+#define HMS_CA_BUNDLE_DIR "hms"
+#define HMS_CA_BUNDLE_NAME HMS_CA_BUNDLE_DIR PATHSEP "cert"
+
+/* Android keeps its trusted roots here, as individual hashed files. */
+#define HMS_SYSTEM_CA_PATH "/system/etc/security/cacerts"
+
+static char hms_cert_path[512];
+static boolean hms_cert_checked;
+static boolean hms_cert_usable;
+
+#ifdef HAVE_THREADS
+static I_mutex hms_cert_mutex;
+#endif
+
+static boolean
+HMS_unpack_ca_bundle (void)
 {
-	const char *dir = "hms";
-	const char *pem = "cert";
+	void *needed_ca;
+	void *saved_ca;
+	boolean ok;
 
-	if (! hms_ca_bundle)
-		hms_ca_bundle = Z_StrDup(va("%s"PATHSEP"%s", dir, pem));
-	if (! hms_cert_path)
-		hms_cert_path = Z_StrDup(va("%s"PATHSEP"%s", srb2path, hms_ca_bundle));
+	char dir[512];
 
-	I_mkdir(va("%s"PATHSEP"%s", srb2path, dir), 0755);
-}
+	snprintf(dir, sizeof dir, "%s"PATHSEP"%s", srb2path, HMS_CA_BUNDLE_DIR);
+	I_mkdir(dir, 0755);
 
-static void *
-HMS_open_ca_bundle (void)
-{
-	return File_Open(hms_ca_bundle, "rb", FILEHANDLE_SDL);
+	needed_ca = File_Open(HMS_CA_BUNDLE_NAME, "rb", FILEHANDLE_SDL);
+
+	if (! needed_ca)
+	{
+		CONS_Alert(CONS_WARNING, "HMS: '%s' is missing from the game data\n",
+				HMS_CA_BUNDLE_NAME);
+		return false;
+	}
+
+	CONS_Printf("HMS: saving CA bundle to '%s'... ", hms_cert_path);
+
+	ok = W_UnpackFile(hms_cert_path, needed_ca);
+
+	File_Close(needed_ca);
+
+	CONS_Printf("%s\n", ok ? "succeeded" : "failed");
+
+	if (! ok)
+		return false;
+
+	/* make sure curl will actually be able to read it back */
+	saved_ca = File_Open(hms_cert_path, "rb", FILEHANDLE_SDL);
+
+	if (! saved_ca)
+		return false;
+
+	File_Close(saved_ca);
+
+	return true;
 }
 
 static void
 HMS_set_cert (CURL *curl)
 {
-	void *saved_ca = NULL;
-	void *needed_ca = NULL;
-
-	boolean should_unpack = false;
-
-	HMS_get_cert();
-
-	if ((saved_ca = File_Open(hms_cert_path, "rb", FILEHANDLE_SDL)) == NULL)
-	{
-		needed_ca = HMS_open_ca_bundle();
-		should_unpack = true;
-	}
-	else
-	{
-		needed_ca = HMS_open_ca_bundle();
-
-#ifndef NOMD5
-		UINT8 saved_md5[16];
-		UINT8 needed_md5[16];
-
-		memset(saved_md5, 0x00, 16);
-		memset(needed_md5, 0x00, 16);
-
-		int statusA = md5_stream_whandle(saved_ca, saved_md5);
-		int statusB = md5_stream_whandle(needed_ca, needed_md5);
-
-		if (statusA == 0 && statusB == 0 && memcmp(saved_md5, needed_md5, 16) != 0)
+#ifdef HAVE_THREADS
+	I_lock_mutex(&hms_cert_mutex);
 #endif
-		{
-			should_unpack = true;
-		}
-
-		File_Close(saved_ca);
-	}
-
-	if (needed_ca)
 	{
-		if (should_unpack)
+		if (! hms_cert_checked)
 		{
-			CONS_Printf("HMS: saving CA bundle '%s'... ", hms_ca_bundle);
+			hms_cert_checked = true;
 
-			if (W_UnpackFile(hms_cert_path, needed_ca))
-				CONS_Printf("succeeded\n");
-			else
-				CONS_Printf("failed\n");
+			snprintf(hms_cert_path, sizeof hms_cert_path,
+					"%s"PATHSEP"%s", srb2path, HMS_CA_BUNDLE_NAME);
+
+			hms_cert_usable = HMS_unpack_ca_bundle();
+
+			if (! hms_cert_usable)
+			{
+				CONS_Alert(CONS_WARNING,
+						"HMS: falling back to the system certificate store ('%s')\n",
+						HMS_SYSTEM_CA_PATH);
+			}
 		}
-
-		File_Close(needed_ca);
 	}
+#ifdef HAVE_THREADS
+	I_unlock_mutex(hms_cert_mutex);
+#endif
 
-	curl_easy_setopt(curl, CURLOPT_CAINFO, hms_cert_path);
+	if (hms_cert_usable)
+		curl_easy_setopt(curl, CURLOPT_CAINFO, hms_cert_path);
+	else
+		curl_easy_setopt(curl, CURLOPT_CAPATH, HMS_SYSTEM_CA_PATH);
 }
+
 #endif
 
 FUNCDEBUG static struct HMS_buffer *
@@ -550,24 +572,33 @@ HMS_register (void)
 	HMS_end(hms);
 
 #ifndef NO_IPV6
-	if (!hms_allow_ipv6)
-		return ok;
-
-	hms = HMS_connect(PROTO_V6, "rooms/%d/register", cv_masterserver_room_id.value);
-
-	if (! hms)
-		return 0;
-
-	curl_easy_setopt(hms->curl, CURLOPT_POSTFIELDS, post);
-
-	ok = HMS_do(hms);
-
-	if (ok)
+	if (hms_allow_ipv6)
 	{
-		hms_server_token_ipv6 = strdup(strtok(hms->buffer, "\n"));
-	}
+		int ok_ipv6 = 0;
 
-	HMS_end(hms);
+		hms = HMS_connect(PROTO_V6, "rooms/%d/register", cv_masterserver_room_id.value);
+
+		if (hms)
+		{
+			curl_easy_setopt(hms->curl, CURLOPT_POSTFIELDS, post);
+
+			ok_ipv6 = HMS_do(hms);
+
+			if (ok_ipv6)
+			{
+				hms_server_token_ipv6 = strdup(strtok(hms->buffer, "\n"));
+			}
+
+			HMS_end(hms);
+		}
+
+		/* Plenty of networks (mobile ones especially) have no IPv6 at all.
+		   Don't report the whole registration as failed in that case. */
+		if (! ok_ipv6 && ok)
+			CONS_Printf("Only listed over IPv4; the IPv6 listing failed.\n");
+
+		ok = (ok || ok_ipv6);
+	}
 #endif
 
 	return ok;
@@ -593,6 +624,7 @@ HMS_unlist (void)
 		HMS_end(hms);
 
 		free(hms_server_token);
+		hms_server_token = NULL;
 	}
 
 #ifndef NO_IPV6
@@ -600,16 +632,17 @@ HMS_unlist (void)
 	{
 		hms = HMS_connect(PROTO_V6, "servers/%s/unlist", hms_server_token_ipv6);
 
-		if (! hms)
-			return 0;
+		if (hms)
+		{
+			curl_easy_setopt(hms->curl, CURLOPT_POST, 1);
+			curl_easy_setopt(hms->curl, CURLOPT_POSTFIELDSIZE, 0);
 
-		curl_easy_setopt(hms->curl, CURLOPT_POST, 1);
-		curl_easy_setopt(hms->curl, CURLOPT_POSTFIELDSIZE, 0);
-
-		ok = HMS_do(hms);
-		HMS_end(hms);
+			ok = (HMS_do(hms) || ok);
+			HMS_end(hms);
+		}
 
 		free(hms_server_token_ipv6);
+		hms_server_token_ipv6 = NULL;
 	}
 #endif
 
@@ -653,13 +686,13 @@ HMS_update (void)
 	{
 		hms = HMS_connect(PROTO_V6, "servers/%s/update", hms_server_token_ipv6);
 
-		if (! hms)
-			return ok;
+		if (hms)
+		{
+			curl_easy_setopt(hms->curl, CURLOPT_POSTFIELDS, post);
 
-		curl_easy_setopt(hms->curl, CURLOPT_POSTFIELDS, post);
-
-		ok = HMS_do(hms);
-		HMS_end(hms);
+			ok = (HMS_do(hms) || ok);
+			HMS_end(hms);
+		}
 	}
 #endif
 

@@ -33,6 +33,8 @@ extern boolean mousegrabbedbylua;
 
 #define META_TAGLIST "TAGLIST"
 
+#define META_EXTRACOLORMAP "EXTRACOLORMAP_T*"
+
 #define META_MOBJ "MOBJ_T*"
 #define META_MAPTHING "MAPTHING_T*"
 
@@ -112,3 +114,4 @@ int LUA_PolyObjLib(lua_State *L);
 int LUA_BlockmapLib(lua_State *L);
 int LUA_HudLib(lua_State *L);
 int LUA_InputLib(lua_State *L);
+int LUA_ColorLib(lua_State *L);

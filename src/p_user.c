@@ -106,7 +106,7 @@ void P_Thrust(mobj_t *mo, angle_t angle, fixed_t move)
 }
 
 #if 0
-static inline void P_ThrustEvenIn2D(mobj_t *mo, angle_t angle, fixed_t move)
+void P_ThrustEvenIn2D(mobj_t *mo, angle_t angle, fixed_t move)
 {
 	angle >>= ANGLETOFINESHIFT;
 
@@ -114,7 +114,7 @@ static inline void P_ThrustEvenIn2D(mobj_t *mo, angle_t angle, fixed_t move)
 	mo->momy += FixedMul(move, FINESINE(angle));
 }
 
-static inline void P_VectorInstaThrust(fixed_t xa, fixed_t xb, fixed_t xc, fixed_t ya, fixed_t yb, fixed_t yc,
+void P_VectorInstaThrust(fixed_t xa, fixed_t xb, fixed_t xc, fixed_t ya, fixed_t yb, fixed_t yc,
 	fixed_t za, fixed_t zb, fixed_t zc, fixed_t momentum, mobj_t *mo)
 {
 	fixed_t a1, b1, c1, a2, b2, c2, i, j, k;
@@ -4602,7 +4602,7 @@ void P_DoJump(player_t *player, boolean soundandstate)
 	}
 }
 
-static void P_DoSpinDashDust(player_t *player)
+void P_DoSpinDashDust(player_t *player)
 {
 	UINT32 i;
 	mobj_t *particle;
@@ -11192,7 +11192,7 @@ static void P_MinecartThink(player_t *player)
 }
 
 // Handle Tails' fluff
-static void P_DoTailsOverlay(player_t *player, mobj_t *tails)
+void P_DoTailsOverlay(player_t *player, mobj_t *tails)
 {
 	// init...
 	boolean smilesonground = P_IsObjectOnGround(player->mo);
@@ -11397,7 +11397,7 @@ static void P_DoTailsOverlay(player_t *player, mobj_t *tails)
 }
 
 // Metal Sonic's jet fume
-static void P_DoMetalJetFume(player_t *player, mobj_t *fume)
+void P_DoMetalJetFume(player_t *player, mobj_t *fume)
 {
 	static const UINT8 FUME_SKINCOLORS[] =
 	{

@@ -106,6 +106,7 @@ add_executable(SRB2SDL2 MACOSX_BUNDLE WIN32
 	lua_hudlib.c
 	lua_hudlib_drawlist.c
 	lua_inputlib.c
+	lua_colorlib.c
 )
 
 # This updates the modification time for comptime.c at the
