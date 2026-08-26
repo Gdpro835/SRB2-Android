@@ -10,6 +10,10 @@
 /// \file  d_netfil.c
 /// \brief Transfer a file using HSendPacket.
 
+#ifdef HAVE_CURL
+#include <curl/curl.h>
+#endif
+
 #include <stdio.h>
 #include <sys/stat.h>
 
@@ -38,6 +42,7 @@
 #include "i_time.h"
 #include "i_net.h"
 #include "i_system.h"
+#include "i_threads.h"
 #include "m_argv.h"
 #include "d_net.h"
 #include "w_wad.h"
@@ -90,6 +95,9 @@ static filetran_t transfer[MAXNETNODES];
 INT32 fileneedednum; // Number of files needed to join the server
 fileneeded_t *fileneeded; // List of needed files
 static tic_t lasttimeackpacketsent = 0;
+#ifdef HAVE_THREADS
+static I_mutex downloadmutex;
+#endif
 char downloaddir[512] = "DOWNLOAD";
 
 // For resuming failed downloads
@@ -102,6 +110,22 @@ typedef struct
 	UINT32 currentsize;
 } pauseddownload_t;
 static pauseddownload_t *pauseddownload = NULL;
+
+file_download_t filedownload;
+
+#ifdef HAVE_CURL
+static CURL *http_handle;
+static CURLM *multi_handle;
+static UINT32 curl_dlnow;
+static UINT32 curl_dltotal;
+static time_t curl_starttime;
+static int curl_runninghandles = 0;
+static UINT32 curl_origfilesize;
+static UINT32 curl_origtotalfilesize;
+static char *curl_realname = NULL;
+static fileneeded_t *curl_curfile = NULL;
+HTTP_login *curl_logins;
+#endif /*HAVE_CURL*/
 
 #ifndef NONET
 // for cl loading screen
@@ -248,6 +272,7 @@ void D_ParseFileneeded(INT32 fileneedednum_parm, UINT8 *fileneededstr, UINT16 fi
 		fileneeded[i].willsend = (UINT8)(filestatus >> 4);
 		fileneeded[i].totalsize = READUINT32(p); // The four next bytes are the file size
 		fileneeded[i].file = NULL; // The file isn't open yet
+		fileneeded[i].failed = FDOWNLOAD_FAIL_NONE;
 		READSTRINGN(p, fileneeded[i].filename, MAX_WADPATH); // The next bytes are the file name
 		READMEM(p, fileneeded[i].md5sum, 16); // The last 16 bytes are the file checksum
 	}
@@ -275,34 +300,51 @@ void CL_PrepareDownloadSaveGame(const char *tmpsave)
 /** Checks the server to see if we CAN download all the files,
   * before starting to create them and requesting.
   *
-  * \return True if we can download all the files
+  * \param direct True when the files would be sent by the game server
+  *               itself, false when they would come from the HTTP mirror.
+  * \return A dlstatus_t code (DLSTATUS_OK when everything is downloadable)
   *
   */
-boolean CL_CheckDownloadable(void)
+UINT8 CL_CheckDownloadable(boolean direct)
 {
-	UINT8 i, dlstatus = 0;
+	UINT8 i;
+	UINT8 dlstatus = DLSTATUS_OK;
+	const char *reason = NULL;
 
 	for (i = 0; i < fileneedednum; i++)
 		if (fileneeded[i].status != FS_FOUND && fileneeded[i].status != FS_OPEN)
 		{
-			if (fileneeded[i].willsend == 1)
+			if (fileneeded[i].folder)
+			{
+				dlstatus = DLSTATUS_FOLDER;
+				break;
+			}
+
+			if (!direct || fileneeded[i].willsend == 1) // WILLSEND_YES
 				continue;
 
-			if (fileneeded[i].willsend == 0)
-				dlstatus = 1;
-			else //if (fileneeded[i].willsend == 2)
-				dlstatus = 2;
+			if (fileneeded[i].willsend == 2) // WILLSEND_TOOLARGE
+				dlstatus = DLSTATUS_TOOLARGE;
+			else //if (fileneeded[i].willsend == 0) WILLSEND_NO
+				dlstatus = DLSTATUS_WONTSEND;
 		}
 
 	if (!dlstatus)
 	{
 		if (!I_SystemStoragePermission()) // No storage permission
-			dlstatus = 4;
-		else if (M_CheckParm("-nodownload")) // Downloading locally disabled
-			dlstatus = 3;
-		else
-			return true;
+		{
+			dlstatus = DLSTATUS_NODOWNLOAD;
+			reason = M_GetText("All files downloadable, but the game doesn't have storage access permission.\n");
+		}
+		else if (direct && M_CheckParm("-nodownload")) // Downloading locally disabled
+		{
+			dlstatus = DLSTATUS_NODOWNLOAD;
+			reason = M_GetText("All files downloadable, but you have chosen to disable downloading locally.\n");
+		}
 	}
+
+	if (dlstatus == DLSTATUS_OK)
+		return dlstatus;
 
 	// not downloadable, put reason in console
 	CONS_Alert(CONS_NOTICE, M_GetText("You need additional files to connect to this server:\n"));
@@ -311,37 +353,45 @@ boolean CL_CheckDownloadable(void)
 		{
 			CONS_Printf(" * \"%s\" (%dK)", fileneeded[i].filename, fileneeded[i].totalsize >> 10);
 
+			if (fileneeded[i].folder)
+				CONS_Printf(" (folder)");
+			else
+			{
 				if (fileneeded[i].status == FS_NOTFOUND)
 					CONS_Printf(M_GetText(" not found, md5: "));
 				else if (fileneeded[i].status == FS_MD5SUMBAD)
 					CONS_Printf(M_GetText(" wrong version, md5: "));
 
-			{
-				INT32 j;
-				char md5tmp[33];
-				for (j = 0; j < 16; j++)
-					sprintf(&md5tmp[j*2], "%02x", fileneeded[i].md5sum[j]);
-				CONS_Printf("%s", md5tmp);
+				{
+					INT32 j;
+					char md5tmp[33];
+					for (j = 0; j < 16; j++)
+						sprintf(&md5tmp[j*2], "%02x", fileneeded[i].md5sum[j]);
+					CONS_Printf("%s", md5tmp);
+				}
 			}
 			CONS_Printf("\n");
 		}
 
-	switch (dlstatus)
-	{
-		case 1:
-			CONS_Printf(M_GetText("Some files are larger than the server is willing to send.\n"));
-			break;
-		case 2:
-			CONS_Printf(M_GetText("The server is not allowing download requests.\n"));
-			break;
-		case 3:
-			CONS_Printf(M_GetText("All files downloadable, but you have chosen to disable downloading locally.\n"));
-			break;
-		case 4:
-			CONS_Printf(M_GetText("All files downloadable, but the game doesn't have storage access permission.\n"));
-			break;
-	}
-	return false;
+	if (reason)
+		CONS_Printf("%s", reason);
+	else
+		switch (dlstatus)
+		{
+			case DLSTATUS_TOOLARGE:
+				CONS_Printf(M_GetText("Some files are larger than the server is willing to send.\n"));
+				break;
+			case DLSTATUS_WONTSEND:
+				CONS_Printf(M_GetText("The server is not allowing download requests.\n"));
+				break;
+			case DLSTATUS_FOLDER:
+				CONS_Printf(M_GetText("One or more files were added as a folder, which the server cannot send.\n"));
+				break;
+			default:
+				break;
+		}
+
+	return dlstatus;
 }
 
 /** Returns true if a needed file transfer can be resumed
@@ -505,7 +555,7 @@ INT32 CL_CheckFiles(void)
 
 	for (i = 0; i < fileneedednum; i++)
 	{
-		if (fileneeded[i].status == FS_NOTFOUND || fileneeded[i].status == FS_MD5SUMBAD)
+		if (fileneeded[i].status == FS_NOTFOUND || fileneeded[i].status == FS_MD5SUMBAD || fileneeded[i].status == FS_FALLBACK)
 			downloadrequired = true;
 
 		if (fileneeded[i].status != FS_OPEN)
@@ -1574,6 +1624,305 @@ void Command_Downloads_f(void)
 			CONS_Printf("%s\n", I_GetNodeAddress(node)); // Address and newline
 		}
 }
+
+// -----------------------------------------------------------------
+// HTTP mirror addon downloading (2.2.15): fetches server addons over
+// HTTP(S) from the mirror URL the server advertises (http_source),
+// instead of through the game protocol. Falls back to the direct
+// downloader if the mirror fails.
+// -----------------------------------------------------------------
+
+#if defined(HAVE_CURL) && defined(HAVE_THREADS)
+
+static size_t curlwrite_data(void *ptr, size_t size, size_t nmemb, FILE *stream)
+{
+	return fwrite(ptr, size, nmemb, stream);
+}
+
+static int curlprogress_callback(void *clientp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow)
+{
+	time_t elapsed;
+
+	(void)clientp;
+	(void)ultotal;
+	(void)ulnow; // Function prototype requires these but we won't use, so just discard
+	curl_dlnow = (UINT32)dlnow;
+	curl_dltotal = (UINT32)dltotal;
+	elapsed = time(NULL) - curl_starttime;
+	if (elapsed > 0)
+		getbytes = (INT32)(((double)dlnow) / elapsed); // To-do: Make this more accurate???
+	return 0;
+}
+
+boolean CURLPrepareFile(const char *url, INT32 dfilenum)
+{
+	HTTP_login *login;
+
+#ifdef PARANOIA
+	if (M_CheckParm("-nodownload"))
+		I_Error("Attempted to download files in -nodownload mode");
+#endif
+
+	if (!multi_handle)
+	{
+		curl_global_init(CURL_GLOBAL_ALL);
+		multi_handle = curl_multi_init();
+	}
+
+	http_handle = curl_easy_init();
+	if (http_handle && multi_handle)
+	{
+		I_mkdir(downloaddir, 0755);
+
+		curl_curfile = &fileneeded[dfilenum];
+		curl_realname = curl_curfile->filename;
+		nameonly(curl_realname);
+
+		curl_origfilesize = curl_curfile->currentsize;
+		curl_origtotalfilesize = curl_curfile->totalsize;
+
+		{
+			char md5tmp[33];
+			INT32 j;
+			for (j = 0; j < 16; j++)
+				sprintf(&md5tmp[j*2], "%02x", curl_curfile->md5sum[j]);
+
+			curl_easy_setopt(http_handle, CURLOPT_URL, va("%s/%s?md5=%s", url, curl_realname, md5tmp));
+		}
+
+		// Only allow HTTP and HTTPS
+#if (LIBCURL_VERSION_MAJOR <= 7) && (LIBCURL_VERSION_MINOR < 85)
+		curl_easy_setopt(http_handle, CURLOPT_PROTOCOLS, CURLPROTO_HTTP|CURLPROTO_HTTPS);
+#else
+		curl_easy_setopt(http_handle, CURLOPT_PROTOCOLS_STR, "http,https");
+#endif
+
+		// Set user agent, as some servers won't accept invalid user agents.
+		curl_easy_setopt(http_handle, CURLOPT_USERAGENT, va("Sonic Robo Blast 2/%s", VERSIONSTRING));
+
+#if defined(__ANDROID__) && defined(MASTERSERVER)
+		// The Android build has no system-wide CA bundle that libcurl
+		// can read: attach the bundle we ship with the game.
+		HMS_set_cert(http_handle);
+#endif
+
+		// Authenticate if the user so wishes
+		login = CURLGetLogin(url, NULL);
+
+		if (login)
+		{
+			curl_easy_setopt(http_handle, CURLOPT_USERPWD, login->auth);
+		}
+
+		// Follow a redirect request, if sent by the server.
+		curl_easy_setopt(http_handle, CURLOPT_FOLLOWLOCATION, 1L);
+
+		curl_easy_setopt(http_handle, CURLOPT_FAILONERROR, 1L);
+
+		CONS_Printf("Downloading addon \"%s\" from %s\n", curl_realname, url);
+
+		strcatbf(curl_curfile->filename, downloaddir, "/");
+		curl_curfile->file = fopen(curl_curfile->filename, "wb");
+		if (!curl_curfile->file)
+		{
+			// cannot open the file: bail out and let the caller
+			// fall back to the direct downloader
+			CONS_Alert(CONS_ERROR, M_GetText("Cannot open %s for writing\n"), curl_curfile->filename);
+			curl_curfile->status = FS_FALLBACK;
+			curl_curfile->failed = FDOWNLOAD_FAIL_OTHER;
+			filedownload.http_failed = true;
+			curl_easy_cleanup(http_handle);
+			http_handle = NULL;
+			filedownload.http_running = false;
+			return false;
+		}
+		curl_easy_setopt(http_handle, CURLOPT_WRITEDATA, curl_curfile->file);
+		curl_easy_setopt(http_handle, CURLOPT_WRITEFUNCTION, curlwrite_data);
+		curl_easy_setopt(http_handle, CURLOPT_NOPROGRESS, 0L);
+		curl_easy_setopt(http_handle, CURLOPT_XFERINFOFUNCTION, curlprogress_callback);
+
+		curl_curfile->status = FS_DOWNLOADING;
+		curl_multi_add_handle(multi_handle, http_handle);
+
+		curl_multi_perform(multi_handle, &curl_runninghandles);
+		curl_starttime = time(NULL);
+
+		filedownload.current = dfilenum;
+#ifndef NONET
+		lastfilenum = dfilenum;
+#endif
+		filedownload.http_running = true;
+
+		I_spawn_thread("http-download", (I_thread_fn)CURLGetFile, NULL);
+
+		return true;
+	}
+
+	filedownload.http_running = false;
+
+	return false;
+}
+
+void CURLAbortFile(void)
+{
+	filedownload.http_running = false;
+
+	// lock and unlock to wait for the download thread to exit
+	I_lock_mutex(&downloadmutex);
+	I_unlock_mutex(downloadmutex);
+}
+
+void CURLGetFile(void)
+{
+	I_lock_mutex(&downloadmutex);
+	{
+		CURLMcode mc; /* return code used by curl_multi_wait() */
+		CURLcode easyres; /* Return from easy interface */
+		CURLMsg *m; /* for picking up messages with the transfer status */
+		CURL *e;
+		int msgs_left; /* how many messages are left */
+		const char *easy_handle_error;
+		boolean running = true;
+
+		while (running && filedownload.http_running)
+		{
+			if (curl_runninghandles)
+			{
+				curl_multi_perform(multi_handle, &curl_runninghandles);
+
+				/* wait for activity, timeout or "nothing" */
+				mc = curl_multi_wait(multi_handle, NULL, 0, 1000, NULL);
+
+				if (mc != CURLM_OK)
+				{
+					CONS_Alert(CONS_WARNING, "curl_multi_wait() failed, code %d.\n", mc);
+					continue;
+				}
+				curl_curfile->currentsize = curl_dlnow;
+				curl_curfile->totalsize = curl_dltotal;
+			}
+
+			/* See how the transfers went */
+			while ((m = curl_multi_info_read(multi_handle, &msgs_left)))
+			{
+				if (m && (m->msg == CURLMSG_DONE))
+				{
+					running = false;
+					e = m->easy_handle;
+					easyres = m->data.result;
+
+					{
+						char *filename = Z_StrDup(curl_realname);
+						nameonly(filename);
+
+						if (easyres != CURLE_OK)
+						{
+							long response_code = 0;
+
+							if (easyres == CURLE_HTTP_RETURNED_ERROR)
+								curl_easy_getinfo(e, CURLINFO_RESPONSE_CODE, &response_code);
+
+							if (response_code == 404)
+								curl_curfile->failed = FDOWNLOAD_FAIL_NOTFOUND;
+							else
+								curl_curfile->failed = FDOWNLOAD_FAIL_OTHER;
+
+							easy_handle_error = (response_code) ? va("HTTP response code %ld", response_code) : curl_easy_strerror(easyres);
+							curl_curfile->status = FS_FALLBACK;
+							curl_curfile->currentsize = curl_origfilesize;
+							curl_curfile->totalsize = curl_origtotalfilesize;
+							filedownload.http_failed = true;
+							fclose(curl_curfile->file);
+							remove(curl_curfile->filename);
+							CONS_Alert(CONS_ERROR, M_GetText("Failed to download addon \"%s\" (%s)\n"), filename, easy_handle_error);
+						}
+						else
+						{
+							fclose(curl_curfile->file);
+
+							CONS_Printf(M_GetText("Finished download of \"%s\"\n"), filename);
+
+							if (checkfilemd5(curl_curfile->filename, curl_curfile->md5sum) == FS_MD5SUMBAD)
+							{
+								CONS_Alert(CONS_WARNING, M_GetText("File \"%s\" does not match the version used by the server\n"), filename);
+								curl_curfile->status = FS_FALLBACK;
+								curl_curfile->failed = FDOWNLOAD_FAIL_MD5SUMBAD;
+								filedownload.http_failed = true;
+							}
+							else
+							{
+								filedownload.completednum++;
+								filedownload.completedsize += curl_curfile->totalsize;
+								curl_curfile->status = FS_FOUND;
+							}
+						}
+
+						Z_Free(filename);
+					}
+
+					curl_curfile->file = NULL;
+					filedownload.remaining--;
+					curl_multi_remove_handle(multi_handle, e);
+					curl_easy_cleanup(e);
+
+					if (!filedownload.remaining)
+						break;
+				}
+			}
+		}
+
+		if (!filedownload.remaining || !filedownload.http_running)
+		{
+			curl_multi_cleanup(multi_handle);
+			curl_global_cleanup();
+			multi_handle = NULL;
+		}
+		filedownload.http_running = false;
+	}
+	I_unlock_mutex(downloadmutex);
+}
+
+HTTP_login *
+CURLGetLogin (const char *url, HTTP_login ***return_prev_next)
+{
+	HTTP_login  * login;
+	HTTP_login ** prev_next;
+
+	for (
+			prev_next = &curl_logins;
+			( login = (*prev_next));
+			prev_next = &login->next
+	){
+		if (strcmp(login->url, url) == 0)
+		{
+			if (return_prev_next)
+				(*return_prev_next) = prev_next;
+
+			return login;
+		}
+	}
+
+	return NULL;
+}
+
+#else /*!(defined(HAVE_CURL) && defined(HAVE_THREADS))*/
+
+/* No libcurl (or no thread support): the HTTP mirror downloader is
+   unavailable. These stubs make the client fall back to the direct
+   (game protocol) downloader instead. */
+
+boolean CURLPrepareFile(const char *url, INT32 dfilenum)
+{
+	(void)url;
+	(void)dfilenum;
+	return false;
+}
+
+void CURLAbortFile(void)
+{
+}
+
+#endif /*defined(HAVE_CURL) && defined(HAVE_THREADS)*/
 
 // Functions cut and pasted from Doomatic :)
 
