@@ -108,4 +108,11 @@ void HMS_list_servers (void);
 msg_server_t * HMS_fetch_servers (msg_server_t *list, int room, int id);
 int  HMS_compare_mod_version (char *buffer, size_t size_of_buffer);
 
+#if defined(__ANDROID__)
+/* http-mserv.c: attach the CA bundle bundled with the game to a libcurl
+   easy handle, so HTTPS requests can be verified on Android. The handle
+   is passed untyped to keep curl out of this header. */
+void HMS_set_cert (void *curl);
+#endif
+
 #endif

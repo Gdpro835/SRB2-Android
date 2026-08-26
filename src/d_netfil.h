@@ -27,13 +27,31 @@ typedef enum
 
 typedef enum
 {
+	DLSTATUS_OK,
+	DLSTATUS_TOOLARGE,
+	DLSTATUS_WONTSEND,
+	DLSTATUS_NODOWNLOAD,
+	DLSTATUS_FOLDER
+} dlstatus_t;
+
+typedef enum
+{
+	FDOWNLOAD_FAIL_NONE,
+	FDOWNLOAD_FAIL_NOTFOUND,
+	FDOWNLOAD_FAIL_MD5SUMBAD,
+	FDOWNLOAD_FAIL_OTHER
+} filedownloadfail_t;
+
+typedef enum
+{
 	FS_NOTCHECKED,
 	FS_NOTFOUND,
 	FS_FOUND,
 	FS_REQUESTED,
 	FS_DOWNLOADING,
 	FS_OPEN, // Is opened and used in w_wad
-	FS_MD5SUMBAD
+	FS_MD5SUMBAD,
+	FS_FALLBACK
 } filestatus_t;
 
 typedef enum
@@ -51,6 +69,7 @@ typedef struct
 	UINT8 willsend; // Is the server willing to send it?
 	UINT8 folder; // File is a folder
 	fileneededtype_t type;
+	filedownloadfail_t failed;
 	boolean justdownloaded; // To prevent late fragments from causing an I_Error
 
 	// Used only for download
@@ -69,6 +88,22 @@ typedef struct
 extern INT32 fileneedednum;
 extern fileneeded_t *fileneeded;
 extern char downloaddir[512];
+
+// State of the client's file download (direct or HTTP mirror)
+typedef struct
+{
+	INT32 current;
+	INT32 remaining;
+	INT32 completednum;
+	UINT32 completedsize;
+
+	boolean http_failed;
+	boolean http_running;
+
+	char http_source[MAX_MIRROR_LENGTH];
+} file_download_t;
+
+extern file_download_t filedownload;
 
 #ifndef NONET
 extern INT32 lastfilenum;
@@ -97,9 +132,25 @@ boolean SendingFile(INT32 node);
 void FileReceiveTicker(void);
 void PT_FileFragment(void);
 
-boolean CL_CheckDownloadable(void);
+UINT8 CL_CheckDownloadable(boolean direct);
 boolean CL_SendFileRequest(void);
 boolean PT_RequestFile(INT32 node);
+
+// HTTP mirror addon downloading (see d_netfil.c)
+typedef struct HTTP_login HTTP_login;
+
+extern struct HTTP_login
+{
+	char       * url;
+	char       * auth;
+	HTTP_login * next;
+}
+*curl_logins;
+
+boolean CURLPrepareFile(const char *url, INT32 dfilenum);
+void CURLAbortFile(void);
+void CURLGetFile(void);
+HTTP_login *CURLGetLogin(const char *url, HTTP_login ***return_prev_next);
 
 typedef enum
 {

@@ -132,9 +132,9 @@ static CV_PossibleValue_t idleaction_cons_t[] = {{1, "Kick"}, {2, "Spectate"}, {
 consvar_t cv_idleaction = CVAR_INIT ("idleaction", "Spectate", CV_SAVE|CV_NETVAR, idleaction_cons_t, NULL);
 consvar_t cv_idletime = CVAR_INIT ("idletime", "3", CV_SAVE|CV_NETVAR, CV_Unsigned, NULL);
 
-/* Announced to clients in PT_SERVERINFO. The port does not download add-ons
-   over HTTP yet, but the field is part of the packet format as of 2.2.14 and
-   servers we host should be able to advertise a mirror all the same. */
+/* Announced to clients in PT_SERVERINFO. Clients download the addons
+   from this HTTP(S) mirror when joining (see d_netfil.c); empty means
+   the addons are sent through the game protocol instead. */
 consvar_t cv_httpsource = CVAR_INIT ("http_source", "", CV_SAVE, NULL, NULL);
 
 UINT8 adminpassmd5[16];
@@ -554,6 +554,7 @@ typedef enum
 	CL_SEARCHING,
 	CL_CHECKFILES,
 	CL_DOWNLOADFILES,
+	CL_DOWNLOADHTTPFILES,
 	CL_ASKJOIN,
 	CL_LOADFILES,
 	CL_WAITJOINRESPONSE,
@@ -1136,7 +1137,7 @@ static void Snake_Draw(void)
 static void CL_DrawConnectionStatusBox(const char *abortstring)
 {
 	M_DrawTextBox(BASEVIDWIDTH/2-128-8, BASEVIDHEIGHT-16-8, 32, 1);
-	if (cl_mode != CL_CONFIRMCONNECT)
+	if (cl_mode != CL_CONFIRMCONNECT && lastfilenum == -1)
 		V_DrawCenteredString(BASEVIDWIDTH/2, BASEVIDHEIGHT-16-16, V_YELLOWMAP, abortstring);
 }
 
@@ -1169,7 +1170,7 @@ static void CL_DrawConnectionStatus(void)
 	else
 		abortstring = "Press ESC to abort";
 
-	if (cl_mode != CL_DOWNLOADFILES && cl_mode != CL_LOADFILES)
+	if (cl_mode != CL_DOWNLOADFILES && cl_mode != CL_DOWNLOADHTTPFILES && cl_mode != CL_LOADFILES)
 	{
 		INT32 i, animtime = ((ccstime / 4) & 15) + 16;
 		UINT8 palstart;
@@ -1310,8 +1311,35 @@ static void CL_DrawConnectionStatus(void)
 				strncpy(tempname, filename, sizeof(tempname)-1);
 			}
 
-			V_DrawCenteredString(BASEVIDWIDTH/2, BASEVIDHEIGHT-16-24, V_YELLOWMAP,
+			V_DrawCenteredString(BASEVIDWIDTH/2, BASEVIDHEIGHT-16-24, V_ALLOWLOWERCASE|V_YELLOWMAP,
 				va(M_GetText("Downloading \"%s\""), tempname));
+
+			if (cl_mode == CL_DOWNLOADHTTPFILES)
+			{
+				const char *http_source = filedownload.http_source;
+
+				memset(tempname, 0, sizeof(tempname));
+				if (strlen(http_source) > sizeof(tempname)-1) // too long to display fully
+				{
+					size_t endhalfpos = strlen(http_source)-10;
+					// display as first 14 chars + ... + last 10 chars
+					// which should add up to 27 if our math(s) is correct
+					snprintf(tempname, sizeof(tempname), "%.14s...%.10s", http_source, http_source+endhalfpos);
+				}
+				else // we can copy the whole thing in safely
+				{
+					strncpy(tempname, http_source, sizeof(tempname)-1);
+				}
+
+				V_DrawCenteredString(BASEVIDWIDTH/2, BASEVIDHEIGHT-16-16, V_ALLOWLOWERCASE|V_YELLOWMAP,
+					va(M_GetText("from %s"), tempname));
+			}
+			else
+			{
+				V_DrawCenteredString(BASEVIDWIDTH/2, BASEVIDHEIGHT-16-16, V_ALLOWLOWERCASE|V_YELLOWMAP,
+					M_GetText("from the server"));
+			}
+
 			V_DrawString(BASEVIDWIDTH/2-128, BASEVIDHEIGHT-16, V_20TRANS|V_MONOSPACE,
 				va(" %4uK/%4uK",fileneeded[lastfilenum].currentsize>>10,file->totalsize>>10));
 			V_DrawRightAlignedString(BASEVIDWIDTH/2+128, BASEVIDHEIGHT-16, V_20TRANS|V_MONOSPACE,
@@ -2077,6 +2105,127 @@ void CL_UpdateServerList(boolean internetsearch, INT32 room)
 
 static INT32 CL_ServerConnectionEventHandler(event_t *ev);
 
+// -----------------------------------------------------------------
+// HTTP mirror addon downloading (2.2.15)
+// -----------------------------------------------------------------
+
+static boolean IsFileDownloadable(fileneeded_t *file)
+{
+	return file->status == FS_NOTFOUND || file->status == FS_MD5SUMBAD;
+}
+
+static boolean UseDirectDownloader(void)
+{
+	return filedownload.http_source[0] == '\0' || filedownload.http_failed;
+}
+
+static void DoLoadFiles(void)
+{
+#ifndef NONET
+	Snake_Remove();
+#endif
+
+	cl_mode = CL_LOADFILES;
+}
+
+static void HandleHTTPDownloadFail(void)
+{
+	char filename[MAX_WADPATH];
+	INT32 i;
+
+	CONS_Alert(CONS_WARNING, M_GetText("One or more addons failed to download:\n"));
+
+	for (i = 0; i < fileneedednum; i++)
+	{
+		if (fileneeded[i].failed == FDOWNLOAD_FAIL_NONE)
+			continue;
+
+		strlcpy(filename, fileneeded[i].filename, sizeof filename);
+		nameonly(filename);
+
+		CONS_Printf(" * \"%s\" (%uK)", filename, fileneeded[i].totalsize >> 10);
+
+		if (fileneeded[i].failed == FDOWNLOAD_FAIL_NOTFOUND)
+			CONS_Printf(M_GetText(" not found, md5: "));
+		else if (fileneeded[i].failed == FDOWNLOAD_FAIL_MD5SUMBAD)
+			CONS_Printf(M_GetText(" wrong version, md5: "));
+		else
+			CONS_Printf(M_GetText(" other error, md5: "));
+
+		{
+			INT32 j;
+			char md5tmp[33];
+			for (j = 0; j < 16; j++)
+				sprintf(&md5tmp[j*2], "%02x", fileneeded[i].md5sum[j]);
+			CONS_Printf("%s\n", md5tmp);
+		}
+
+		fileneeded[i].failed = FDOWNLOAD_FAIL_NONE;
+	}
+
+	CONS_Printf(M_GetText("Falling back to direct downloader.\n"));
+
+	cl_mode = CL_CHECKFILES;
+}
+
+static void BeginDownload(boolean direct)
+{
+	INT32 i;
+
+	filedownload.current = 0;
+	filedownload.remaining = 0;
+
+	for (i = 0; i < fileneedednum; i++)
+	{
+		// a file the HTTP mirror failed to provide is retried
+		// by the direct downloader
+		if (fileneeded[i].status == FS_FALLBACK)
+			fileneeded[i].status = FS_NOTFOUND;
+
+		if (IsFileDownloadable(&fileneeded[i]))
+			filedownload.remaining++;
+	}
+
+	if (!filedownload.remaining)
+	{
+		DoLoadFiles();
+		return;
+	}
+
+	if (!direct)
+	{
+		cl_mode = CL_DOWNLOADHTTPFILES;
+#ifndef NONET
+		if (inputmethod != INPUTMETHOD_TOUCH)
+			Snake_Initialise();
+#endif
+	}
+	else
+	{
+		// do old LEGACY request
+		if (CL_SendFileRequest())
+		{
+			cl_mode = CL_DOWNLOADFILES;
+#ifndef NONET
+			if (inputmethod != INPUTMETHOD_TOUCH)
+				Snake_Initialise();
+#endif
+		}
+		else
+		{
+			D_QuitNetGame();
+			CL_Reset();
+			D_StartTitle();
+
+			M_StartMessage(va(M_GetText(
+				"The direct downloader encountered an error.\n"
+				"See the logfile for more info.\n\n"
+				"%s"
+			), M_GetUserActionString(PRESS_ESC_MESSAGE)), NULL, MM_NOTHING);
+		}
+	}
+}
+
 static void M_ConfirmConnect(event_t *ev)
 {
 #ifndef NONET
@@ -2093,19 +2242,11 @@ static void M_ConfirmConnect(event_t *ev)
 	switch (result)
 	{
 		case 1:
-			if (totalfilesrequestednum > 0)
-			{
-				memset(gamekeydown, 0, NUMKEYS);
+			memset(gamekeydown, 0, NUMKEYS);
 
-				if (CL_SendFileRequest())
-				{
-					cl_mode = CL_DOWNLOADFILES;
-					if (inputmethod != INPUTMETHOD_TOUCH)
-						Snake_Initialise();
-				}
-			}
-			else
-				cl_mode = CL_LOADFILES;
+			// download from the HTTP mirror if the server advertises
+			// one, otherwise use the direct downloader
+			BeginDownload(UseDirectDownloader());
 			break;
 		case -1:
 			cl_mode = CL_ABORTED;
@@ -2217,7 +2358,7 @@ static boolean CL_FinishedFileList(void)
 	{
 		// must download something
 		// can we, though?
-		if (!CL_CheckDownloadable()) // nope!
+		if (CL_CheckDownloadable(UseDirectDownloader()) != DLSTATUS_OK) // nope!
 		{
 			D_QuitNetGame();
 			CL_Reset();
@@ -2234,47 +2375,57 @@ static boolean CL_FinishedFileList(void)
 			return false;
 		}
 
+		if (!filedownload.http_failed)
+		{
+			// show download consent modal ONCE!
 #ifndef NONET
-		downloadcompletednum = 0;
-		downloadcompletedsize = 0;
-		totalfilesrequestednum = 0;
-		totalfilesrequestedsize = 0;
+			downloadcompletednum = 0;
+			downloadcompletedsize = 0;
+			totalfilesrequestednum = 0;
+			totalfilesrequestedsize = 0;
 
-		if (fileneeded == NULL)
-			I_Error("CL_FinishedFileList: fileneeded == NULL");
+			if (fileneeded == NULL)
+				I_Error("CL_FinishedFileList: fileneeded == NULL");
 
-		for (i = 0; i < fileneedednum; i++)
-			if (fileneeded[i].status == FS_NOTFOUND || fileneeded[i].status == FS_MD5SUMBAD)
-			{
-				totalfilesrequestednum++;
-				totalfilesrequestedsize += fileneeded[i].totalsize;
-			}
+			for (i = 0; i < fileneedednum; i++)
+				if (fileneeded[i].status == FS_NOTFOUND || fileneeded[i].status == FS_MD5SUMBAD)
+				{
+					totalfilesrequestednum++;
+					totalfilesrequestedsize += fileneeded[i].totalsize;
+				}
 
-		if (totalfilesrequestedsize>>20 >= 100)
-			downloadsize = Z_StrDup(va("%uM",totalfilesrequestedsize>>20));
-		else
-			downloadsize = Z_StrDup(va("%uK",totalfilesrequestedsize>>10));
+			if (totalfilesrequestedsize>>20 >= 100)
+				downloadsize = Z_StrDup(va("%uM",totalfilesrequestedsize>>20));
+			else
+				downloadsize = Z_StrDup(va("%uK",totalfilesrequestedsize>>10));
 #endif
 
-		if (serverisfull)
-			M_StartMessage(va(M_GetText(
-				"This server is full!\n"
-				"Download of %s additional content\nis required to join.\n"
-				"\n"
-				"You may download, load server addons,\nand wait for a slot.\n"
-				"\n"
-				"%s to continue\nor %s to cancel.\n"
-			), downloadsize, enterstring, escstring), M_ConfirmConnect, MM_EVENTHANDLER);
-		else
-			M_StartMessage(va(M_GetText(
-				"Download of %s additional content\nis required to join.\n"
-				"\n"
-				"%s to continue\nor %s to cancel.\n"
-			), downloadsize, enterstring, escstring), M_ConfirmConnect, MM_EVENTHANDLER);
+			if (serverisfull)
+				M_StartMessage(va(M_GetText(
+					"This server is full!\n"
+					"Download of %s additional content\nis required to join.\n"
+					"\n"
+					"You may download, load server addons,\nand wait for a slot.\n"
+					"\n"
+					"%s to continue\nor %s to cancel.\n"
+				), downloadsize, enterstring, escstring), M_ConfirmConnect, MM_EVENTHANDLER);
+			else
+				M_StartMessage(va(M_GetText(
+					"Download of %s additional content\nis required to join.\n"
+					"\n"
+					"%s to continue\nor %s to cancel.\n"
+				), downloadsize, enterstring, escstring), M_ConfirmConnect, MM_EVENTHANDLER);
 
-		Z_Free(downloadsize);
-		cl_mode = CL_CONFIRMCONNECT;
-		curfadevalue = 0;
+			Z_Free(downloadsize);
+			cl_mode = CL_CONFIRMCONNECT;
+			curfadevalue = 0;
+		}
+		else
+		{
+			// HTTP mirror already failed: do a direct download,
+			// without asking for consent a second time
+			BeginDownload(true);
+		}
 	}
 	return true;
 }
@@ -2398,6 +2549,13 @@ static boolean CL_ServerConnectionSearchTicker(tic_t *asksent)
 					return false;
 				}
 			}
+
+			// the server can advertise an HTTP mirror to download
+			// the addons from, instead of the game protocol
+			if (info->httpsource[0])
+				strlcpy(filedownload.http_source, info->httpsource, MAX_MIRROR_LENGTH);
+			else
+				filedownload.http_source[0] = '\0';
 
 			D_ParseFileneeded(info->fileneedednum, info->fileneeded, 0);
 
@@ -2557,6 +2715,34 @@ static boolean CL_ServerConnectionTicker(const char *tmpsave, tic_t *oldtic, tic
 			if (!CL_FinishedFileList())
 				return false;
 			break;
+		case CL_DOWNLOADHTTPFILES:
+			waitmore = false;
+			for (i = (filedownload.current < 0 ? 0 : filedownload.current); i < fileneedednum; i++)
+			{
+				if (IsFileDownloadable(&fileneeded[i]))
+				{
+					if (!filedownload.http_running)
+					{
+						if (!CURLPrepareFile(filedownload.http_source, i))
+							HandleHTTPDownloadFail();
+					}
+					waitmore = true;
+					break;
+				}
+			}
+
+			if (waitmore)
+				break; // exit the case
+
+			// Done downloading files
+			if (!filedownload.remaining)
+			{
+				if (filedownload.http_failed)
+					HandleHTTPDownloadFail();
+				else
+					DoLoadFiles();
+			}
+			break;
 		case CL_DOWNLOADFILES:
 			waitmore = false;
 			for (i = 0; i < fileneedednum; i++)
@@ -2663,6 +2849,9 @@ static boolean CL_ServerConnectionTicker(const char *tmpsave, tic_t *oldtic, tic
 		{
 #ifndef NONET
 			Snake_Remove();
+
+			// stop the HTTP mirror download thread, if any
+			CURLAbortFile();
 #endif
 
 			memset(gamekeydown, 0, NUMKEYS);
@@ -2677,7 +2866,7 @@ static boolean CL_ServerConnectionTicker(const char *tmpsave, tic_t *oldtic, tic
 			return false;
 		}
 #ifndef NONET
-		else if (cl_mode == CL_DOWNLOADFILES)
+		else if (cl_mode == CL_DOWNLOADFILES || cl_mode == CL_DOWNLOADHTTPFILES)
 		{
 			if (snake)
 				Snake_Handle();
@@ -2700,7 +2889,7 @@ static boolean CL_ServerConnectionTicker(const char *tmpsave, tic_t *oldtic, tic
 		{
 			if (!I_AppOnBackground())
 			{
-				if (!snake || (snake && cl_mode != CL_DOWNLOADFILES && cl_mode != CL_DOWNLOADSAVEGAME))
+				if (!snake || (snake && cl_mode != CL_DOWNLOADFILES && cl_mode != CL_DOWNLOADHTTPFILES && cl_mode != CL_DOWNLOADSAVEGAME))
 				{
 					F_MenuPresTicker(); // title sky
 					F_TitleScreenTicker(true);
@@ -3266,10 +3455,18 @@ void CL_Reset(void)
 #ifndef NONET
 	totalfilesrequestednum = 0;
 	totalfilesrequestedsize = 0;
+	lastfilenum = -1;
 #endif
 	firstconnectattempttime = 0;
 	serverisfull = false;
 	connectiontimeout = (tic_t)cv_nettimeout.value; //reset this temporary hack
+
+	// reset the HTTP mirror downloader state
+	filedownload.remaining = 0;
+	filedownload.current = -1;
+	filedownload.http_failed = false;
+	filedownload.http_running = false;
+	filedownload.http_source[0] = '\0';
 
 	// D_StartTitle should get done now, but the calling function will handle it
 }

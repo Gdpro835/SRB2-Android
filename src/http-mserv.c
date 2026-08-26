@@ -224,9 +224,12 @@ HMS_unpack_ca_bundle (void)
 	return true;
 }
 
-static void
-HMS_set_cert (CURL *curl)
+/* Not static anymore: the HTTP mirror addon downloader in d_netfil.c
+   calls this to attach the same CA bundle to its own curl handles. */
+void
+HMS_set_cert (void *curl_handle)
 {
+	CURL *curl = curl_handle;
 #ifdef HAVE_THREADS
 	I_lock_mutex(&hms_cert_mutex);
 #endif

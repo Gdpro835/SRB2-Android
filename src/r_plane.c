@@ -451,8 +451,13 @@ visplane_t *R_FindPlane(sector_t *sector, fixed_t height, INT32 picnum, INT32 li
 			}
 		}
 	}
+	else
+	{
+		// FOF planes are kept OUT of the regular visplane hash buckets:
+		// they must never merge with regular floor/ceiling planes.
+		hash = MAXVISPLANES - 1;
+	}
 
-	hash = visplane_hash(picnum, lightlevel, height);
 	check = new_visplane(hash);
 
 	check->height = height;
