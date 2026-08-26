@@ -1939,14 +1939,16 @@ void R_StoreWallRange(INT32 start, INT32 stop)
 		// hack to allow height changes in outdoor areas
 		// This is what gets rid of the upper textures if there should be sky
 		if (frontsector->ceilingpic == skyflatnum
-			&& backsector->ceilingpic == skyflatnum)
+			&& backsector->ceilingpic == skyflatnum
+			&& !(P_SectorHasCeilingPortal(backsector) || P_SectorHasCeilingPortal(frontsector)))
 		{
 			bothceilingssky = true;
 		}
 
 		// likewise, but for floors and upper textures
 		if (frontsector->floorpic == skyflatnum
-			&& backsector->floorpic == skyflatnum)
+			&& backsector->floorpic == skyflatnum
+			&& !(P_SectorHasFloorPortal(backsector) || P_SectorHasFloorPortal(frontsector)))
 		{
 			bothfloorssky = true;
 		}
@@ -2040,6 +2042,8 @@ void R_StoreWallRange(INT32 start, INT32 stop)
 			//SoM: 3/22/2000: Check floor x and y offsets.
 			|| backsector->floorxoffset != frontsector->floorxoffset
 			|| backsector->flooryoffset != frontsector->flooryoffset
+			|| backsector->floorxscale != frontsector->floorxscale
+			|| backsector->flooryscale != frontsector->flooryscale
 			|| backsector->floorangle != frontsector->floorangle
 			//SoM: 3/22/2000: Prevents bleeding.
 			|| (frontsector->heightsec != -1 && frontsector->floorpic != skyflatnum)
@@ -2048,6 +2052,7 @@ void R_StoreWallRange(INT32 start, INT32 stop)
 			|| backsector->floorlightsec != frontsector->floorlightsec
 			//SoM: 4/3/2000: Check for colormaps
 			|| frontsector->extra_colormap != backsector->extra_colormap
+			|| !P_CompareSectorPortals(P_SectorGetFloorPortal(frontsector), P_SectorGetFloorPortal(backsector))
 			|| (frontsector->ffloors != backsector->ffloors && !Tag_Compare(&frontsector->tags, &backsector->tags)))
 		{
 			markfloor = true;
@@ -2073,6 +2078,8 @@ void R_StoreWallRange(INT32 start, INT32 stop)
 			//SoM: 3/22/2000: Check floor x and y offsets.
 			|| backsector->ceilingxoffset != frontsector->ceilingxoffset
 			|| backsector->ceilingyoffset != frontsector->ceilingyoffset
+			|| backsector->ceilingxscale != frontsector->ceilingxscale
+			|| backsector->ceilingyscale != frontsector->ceilingyscale
 			|| backsector->ceilingangle != frontsector->ceilingangle
 			//SoM: 3/22/2000: Prevents bleeding.
 			|| (frontsector->heightsec != -1 && frontsector->ceilingpic != skyflatnum)
@@ -2081,6 +2088,7 @@ void R_StoreWallRange(INT32 start, INT32 stop)
 			|| backsector->ceilinglightsec != frontsector->ceilinglightsec
 			//SoM: 4/3/2000: Check for colormaps
 			|| frontsector->extra_colormap != backsector->extra_colormap
+			|| !P_CompareSectorPortals(P_SectorGetCeilingPortal(frontsector), P_SectorGetCeilingPortal(backsector))
 			|| (frontsector->ffloors != backsector->ffloors && !Tag_Compare(&frontsector->tags, &backsector->tags)))
 		{
 				markceiling = true;

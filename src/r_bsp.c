@@ -367,6 +367,11 @@ sector_t *R_FakeFlat(sector_t *sec, sector_t *tempsec, INT32 *floorlightlevel,
 
 boolean R_IsEmptyLine(seg_t *line, sector_t *front, sector_t *back)
 {
+	if (P_SectorHasPortal(front) && !P_SectorHasPortal(back))
+		return false;
+	else if (!P_SectorHasPortal(front) && P_SectorHasPortal(back))
+		return false;
+
 	return (
 		!line->polyseg &&
 		back->ceilingpic == front->ceilingpic
@@ -509,9 +514,15 @@ static void R_AddLine(seg_t *line)
 
 	doorclosed = 0;
 
-	if (backsector->ceilingpic == skyflatnum && frontsector->ceilingpic == skyflatnum)
+	// hack to allow height changes in outdoor areas
+	// This is what gets rid of the upper textures if there should be sky
+	if (backsector->ceilingpic == skyflatnum && frontsector->ceilingpic == skyflatnum
+	&& !(P_SectorHasCeilingPortal(backsector) || P_SectorHasCeilingPortal(frontsector)))
 		bothceilingssky = true;
-	if (backsector->floorpic == skyflatnum && frontsector->floorpic == skyflatnum)
+
+	// likewise, but for floors and upper textures
+	if (backsector->floorpic == skyflatnum && frontsector->floorpic == skyflatnum
+	&& !(P_SectorHasFloorPortal(backsector) || P_SectorHasFloorPortal(frontsector)))
 		bothfloorssky = true;
 
 	if (bothceilingssky && bothfloorssky) // everything's sky? let's save us a bit of time then
