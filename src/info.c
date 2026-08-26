@@ -715,7 +715,7 @@ state_t states[NUMSTATES] =
 
 	// Player
 	{SPR_PLAY, SPR2_STND|FF_ANIMATE,    105, {NULL}, 0,  7, S_PLAY_WAIT, 0}, // S_PLAY_STND
-	{SPR_PLAY, SPR2_WAIT|FF_ANIMATE,     -1, {NULL}, 0, 16, S_NULL, 0},      // S_PLAY_WAIT
+	{SPR_PLAY, SPR2_WAIT,                16, {NULL}, 0,  0, S_PLAY_WAIT, 0}, // S_PLAY_WAIT
 	{SPR_PLAY, SPR2_WALK,                 4, {NULL}, 0,  0, S_PLAY_WALK, 0}, // S_PLAY_WALK
 	{SPR_PLAY, SPR2_SKID,                 1, {NULL}, 0,  0, S_PLAY_WALK, 0}, // S_PLAY_SKID
 	{SPR_PLAY, SPR2_RUN ,                 2, {NULL}, 0,  0, S_PLAY_RUN, 0},  // S_PLAY_RUN
